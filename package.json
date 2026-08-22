@@ -1,0 +1,21 @@
+{
+  "name": "fairlane-router",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@9.15.0",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "build": "pnpm -r run build",
+    "test": "pnpm -r run test",
+    "typecheck": "pnpm -r run typecheck",
+    "lint": "biome lint .",
+    "lint:fix": "biome check --write .",
+    "format": "biome format --write .",
+    "gate": "pnpm lint && pnpm typecheck && pnpm test"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.5.10",
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.11"
+  }
+}

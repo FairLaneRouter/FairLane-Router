@@ -1,0 +1,152 @@
+import { z } from 'zod'
+
+const SLOT_SKIPPED_CODES = new Set([-32007, -32009])
+
+export class RpcError extends Error {
+  override readonly name = 'RpcError'
+  readonly code: number | undefined
+
+  constructor(message: string, code?: number, options?: ErrorOptions) {
+    super(message, options)
+    this.code = code
+  }
+}
+
+export class SlotSkippedError extends RpcError {
+  override readonly name = 'RpcError'
+  readonly slot: number
+
+  constructor(slot: number, code: number) {
+    super(`Слот ${slot} пропущений або відсутній у ledger`, code)
+    this.slot = slot
+  }
+}
+
+const metaSchema = z.object({
+  err: z.unknown().nullable(),
+  fee: z.number().int().nonnegative(),
+  computeUnitsConsumed: z.number().int().nonnegative().optional(),
+  preBalances: z.array(z.number().int().nonnegative()),
+  postBalances: z.array(z.number().int().nonnegative()),
+})
+
+const transactionSchema = z.object({
+  transaction: z.object({
+    signatures: z.array(z.string()).min(1),
+    message: z.object({ accountKeys: z.array(z.string()) }),
+  }),
+  meta: metaSchema,
+})
+
+export const blockSchema = z.object({
+  blockhash: z.string(),
+  parentSlot: z.number().int().nonnegative(),
+  blockTime: z.number().int().nullable().optional(),
+  transactions: z.array(transactionSchema),
+})
+
+export type Block = z.infer<typeof blockSchema>
+export type BlockTransaction = z.infer<typeof transactionSchema>
+
+const envelopeSchema = z.object({
+  result: z.unknown().optional(),
+  error: z.object({ code: z.number(), message: z.string() }).optional(),
+})
+
+export type FetchLike = (url: string, init: { method: string; headers: Record<string, string>; body: string }) => Promise<{
+  ok: boolean
+  status: number
+  json: () => Promise<unknown>
+}>
+
+export type RpcClientOptions = {
+  readonly url: string
+  readonly fallbackUrl?: string | undefined
+  readonly fetch?: FetchLike
+}
+
+export type RpcClient = {
+  getSlot(): Promise<number>
+  getBlock(slot: number): Promise<Block>
+}
+
+export function createRpcClient(options: RpcClientOptions): RpcClient {
+  const urls = options.fallbackUrl ? [options.url, options.fallbackUrl] : [options.url]
+  const doFetch = options.fetch ?? (globalThis.fetch as unknown as FetchLike)
+  let id = 0
+
+  async function call(method: string, params: unknown[], slot?: number): Promise<unknown> {
+    const body = JSON.stringify({ jsonrpc: '2.0', id: ++id, method, params })
+    const failures: string[] = []
+
+    for (const url of urls) {
+      let payload: unknown
+      try {
+        const response = await doFetch(url, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body,
+        })
+        if (!response.ok) {
+          failures.push(`${url}: HTTP ${response.status}`)
+          continue
+        }
+        payload = await response.json()
+      } catch (cause) {
+        failures.push(`${url}: ${cause instanceof Error ? cause.message : String(cause)}`)
+        continue
+      }
+
+      const envelope = envelopeSchema.safeParse(payload)
+      if (!envelope.success) {
+        throw new RpcError(`${method}: відповідь не є JSON-RPC конвертом`)
+      }
+
+      const error = envelope.data.error
+      if (error) {
+        // Пропущений слот приходить як помилка, але означає штатний стан ланцюга:
+        // такий слот не існує і ніколи не з'явиться, дочитувати його марно.
+        if (slot !== undefined && SLOT_SKIPPED_CODES.has(error.code)) {
+          throw new SlotSkippedError(slot, error.code)
+        }
+        throw new RpcError(`${method}: ${error.message}`, error.code)
+      }
+
+      return envelope.data.result
+    }
+
+    throw new RpcError(`${method}: жоден ендпоінт не відповів — ${failures.join('; ')}`)
+  }
+
+  return {
+    async getSlot() {
+      const result = await call('getSlot', [{ commitment: 'confirmed' }])
+      const parsed = z.number().int().nonnegative().safeParse(result)
+      if (!parsed.success) throw new RpcError('getSlot: результат не є номером слота')
+      return parsed.data
+    },
+
+    async getBlock(slot) {
+      const result = await call(
+        'getBlock',
+        [
+          slot,
+          {
+            encoding: 'json',
+            transactionDetails: 'full',
+            rewards: false,
+            commitment: 'confirmed',
+            maxSupportedTransactionVersion: 0,
+          },
+        ],
+        slot,
+      )
+
+      const parsed = blockSchema.safeParse(result)
+      if (!parsed.success) {
+        throw new RpcError(`getBlock(${slot}): відповідь не відповідає схемі блока`)
+      }
+      return parsed.data
+    },
+  }
+}

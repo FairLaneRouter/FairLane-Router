@@ -1,0 +1,53 @@
+@import 'tailwindcss';
+
+:root {
+  /* instrument palette — structural colour only */
+  --paper: 210 33% 98%;
+  --ink: 218 45% 12%;
+  --ink-muted: 217 16% 45%;
+  --grid-minor: 210 22% 90%;
+  --grid-major: 210 20% 82%;
+  --overpay: 4 44% 44%;
+  --rule: 214 20% 76%;
+}
+
+body {
+  background-color: hsl(var(--paper));
+  color: hsl(var(--ink));
+  font-family: 'Barlow Condensed', 'Arial Narrow', sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* graph paper — 8px minor, 40px major */
+.graph-paper {
+  background-color: hsl(var(--paper));
+  background-image:
+    linear-gradient(to right, hsl(var(--grid-major) / 0.9) 1px, transparent 1px),
+    linear-gradient(to bottom, hsl(var(--grid-major) / 0.9) 1px, transparent 1px),
+    linear-gradient(to right, hsl(var(--grid-minor) / 0.75) 1px, transparent 1px),
+    linear-gradient(to bottom, hsl(var(--grid-minor) / 0.75) 1px, transparent 1px);
+  background-size:
+    40px 40px,
+    40px 40px,
+    8px 8px,
+    8px 8px;
+  background-position: -1px -1px;
+}
+
+.u-label {
+  font-family: 'Barlow Condensed', 'Arial Narrow', sans-serif;
+  letter-spacing: 0.02em;
+}
+
+.u-caps {
+  font-family: 'Barlow Condensed', 'Arial Narrow', sans-serif;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+}
+
+.u-num {
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1;
+  letter-spacing: -0.01em;
+}

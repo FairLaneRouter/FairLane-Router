@@ -116,6 +116,17 @@ describe('buildChannelRegistry', () => {
     ).toThrow(/невідому групу/)
   })
 
+  it('rejects a registry without the plain-RPC group', () => {
+    const source = definition()
+
+    expect(() =>
+      buildChannelRegistry({
+        groups: [{ id: 'jito', name: 'Jito' }],
+        channels: [source.channels[0]],
+      }),
+    ).toThrow(/обовʼязкової групи rpc/)
+  })
+
   it('rejects duplicate ids', () => {
     const source = definition()
 

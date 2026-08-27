@@ -164,6 +164,13 @@ export function buildChannelRegistry(
 
   const byId = new Map(groups.map((group) => [group.id, group]))
 
+  // Без групи звичайного RPC туди нікуди зарахувати транзакцію з пріоритетною
+  // комісією і без чайових — а це більшість. Вони пішли б у «неатрибутовано» і
+  // виглядали б як спостереження про мережу, а не як помилка конфігурації.
+  if (!byId.has(RPC_GROUP_ID)) {
+    throw new ChannelRegistryError(`Довідник не має обовʼязкової групи ${RPC_GROUP_ID}`)
+  }
+
   return {
     groups,
     channels,

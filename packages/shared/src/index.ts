@@ -1,3 +1,4 @@
+export * from './attribution'
 export * from './channels'
 export * from './channels.data'
 export * from './config'

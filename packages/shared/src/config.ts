@@ -19,6 +19,8 @@ const envSchema = z.object({
     z.url({ protocol: /^https$/ }).optional(),
   ),
   DATABASE_URL: z.string().min(1),
+  // Пряме з'єднання повз пулер — тільки для міграцій (packages/db/src/migrate.ts).
+  DATABASE_DIRECT_URL: z.preprocess(blankToUndefined, z.string().min(1).optional()),
 
   SAMPLE_EVERY_N: numeric(z.number().int().min(1).default(100)),
   RPC_SAMPLE_RATE: numeric(z.number().min(0).max(1).default(0.05)),
@@ -42,6 +44,7 @@ export type Config = {
   readonly solanaRpcUrl: string
   readonly solanaRpcFallbackUrl: string | undefined
   readonly databaseUrl: string
+  readonly databaseDirectUrl: string | undefined
   readonly sampleEveryN: number
   readonly rpcSampleRate: number
   readonly port: number
@@ -94,6 +97,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     solanaRpcUrl: e.SOLANA_RPC_URL,
     solanaRpcFallbackUrl: e.SOLANA_RPC_FALLBACK_URL,
     databaseUrl: e.DATABASE_URL,
+    databaseDirectUrl: e.DATABASE_DIRECT_URL,
     sampleEveryN: e.SAMPLE_EVERY_N,
     rpcSampleRate: e.RPC_SAMPLE_RATE,
     port: e.PORT,

@@ -1,5 +1,5 @@
-import { computeLandingCost, isVoteTransaction } from './cost'
-import type { BlockTransaction } from './rpc'
+import { computeLandingCost, isVoteTransaction } from './cost.ts'
+import type { BlockTransaction } from './rpc.ts'
 
 /** Процентиль повної вартості посадки, який береться за еталон слота (FR-005). */
 export const SLOT_REF_PERCENTILE = 10

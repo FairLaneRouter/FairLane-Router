@@ -23,7 +23,14 @@ importers:
 
   apps/api: {}
 
-  apps/indexer: {}
+  apps/indexer:
+    dependencies:
+      '@fairlane/db':
+        specifier: workspace:^
+        version: link:../../packages/db
+      '@fairlane/shared':
+        specifier: workspace:^
+        version: link:../../packages/shared
 
   apps/web:
     dependencies:

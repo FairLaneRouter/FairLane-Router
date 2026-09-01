@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { createRpcClient, RpcError, SlotSkippedError } from './rpc'
+import { createRpcClient, RpcError, SlotSkippedError } from './rpc.ts'
 
 const block = {
   blockhash: 'Fh1s9…',

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { loadConfig } from './config'
+import { loadConfig } from './config.ts'
 
 const valid = {
   SOLANA_RPC_URL: 'https://rpc.example/?api-key=k',

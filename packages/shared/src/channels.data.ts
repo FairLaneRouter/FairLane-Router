@@ -1,4 +1,4 @@
-import type { RegistryDefinition } from './channels'
+import type { RegistryDefinition } from './channels.ts'
 
 /**
  * Базовий набір каналів спостереження (FR-008). Це **дані**, а не код: додати

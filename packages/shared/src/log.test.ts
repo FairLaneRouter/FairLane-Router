@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { createLogger } from './log'
-import type { LogLevel } from './log'
+import { createLogger } from './log.ts'
+import type { LogLevel } from './log.ts'
 
 const AT = new Date('2026-08-28T10:00:00.000Z')
 

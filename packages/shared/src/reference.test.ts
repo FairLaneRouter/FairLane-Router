@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { BASE_FEE_PER_SIGNATURE, VOTE_PROGRAM_ID } from './cost'
+import { BASE_FEE_PER_SIGNATURE, VOTE_PROGRAM_ID } from './cost.ts'
 import {
   MIN_SLOT_REF_SAMPLES,
   computeSlotRef,
   isSlotRefSample,
   percentile,
-} from './reference'
-import type { BlockTransaction } from './rpc'
+} from './reference.ts'
+import type { BlockTransaction } from './rpc.ts'
 
 const TIP_ACCOUNT = 'TipAccount1'
 const TIP_ACCOUNTS = new Set([TIP_ACCOUNT])

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { BASE_FEE_PER_SIGNATURE, computeLandingCost, isVoteTransaction } from './cost'
-import type { BlockTransaction } from './rpc'
+import { BASE_FEE_PER_SIGNATURE, computeLandingCost, isVoteTransaction } from './cost.ts'
+import type { BlockTransaction } from './rpc.ts'
 
 type Overrides = {
   signatures?: string[]

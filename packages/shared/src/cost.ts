@@ -1,4 +1,4 @@
-import type { BlockTransaction } from './rpc'
+import type { BlockTransaction } from './rpc.ts'
 
 export const BASE_FEE_PER_SIGNATURE = 5000
 

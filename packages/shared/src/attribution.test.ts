@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { attributeGroup } from './attribution'
-import { RPC_GROUP_ID, buildChannelRegistry } from './channels'
-import type { LandingCost } from './cost'
+import { attributeGroup } from './attribution.ts'
+import { RPC_GROUP_ID, buildChannelRegistry } from './channels.ts'
+import type { LandingCost } from './cost.ts'
 
 const JITO_ACCOUNT = '96gYZGLnJYVFmbjzopPSU6QiEV5fGqZNyN9nmNhvrZU5'
 const JITO_ACCOUNT_2 = 'HFqU5x63VTqvQss8hp11i4wVV8bD44PvwucfZ2bU7gRe'

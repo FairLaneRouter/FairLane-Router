@@ -1,5 +1,5 @@
-import { RPC_GROUP_ID, type ChannelRegistry } from './channels'
-import type { LandingCost } from './cost'
+import { RPC_GROUP_ID, type ChannelRegistry } from './channels.ts'
+import type { LandingCost } from './cost.ts'
 
 /**
  * Чим саме доведена належність до групи. Причина зберігається разом із

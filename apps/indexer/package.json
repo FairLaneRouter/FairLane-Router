@@ -7,5 +7,9 @@
     "build": "tsc -p tsconfig.json",
     "test": "vitest run --passWithNoTests",
     "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@fairlane/db": "workspace:^",
+    "@fairlane/shared": "workspace:^"
   }
 }

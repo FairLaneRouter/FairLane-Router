@@ -5,6 +5,7 @@ import {
   buildChannelRegistry,
   channelEndpointKey,
 } from './channels.ts'
+import { isSolanaAddress } from './base58.ts'
 import { DEFAULT_REGISTRY } from './channels.data.ts'
 
 const ACCOUNT_A = '96gYZGLnJYVFmbjzopPSU6QiEV5fGqZNyN9nmNhvrZU5'
@@ -50,13 +51,33 @@ describe('buildChannelRegistry', () => {
     ])
   })
 
-  // Поки службові акаунти не звірені з документацією сервісів, розпізнавати
-  // нічим — і це має виглядати як «неатрибутовано», а не як робоча атрибуція.
-  it('recognises nothing until tip accounts are filled in', () => {
+  // Кожна адреса довідника має розкодуватись у 32 байти. Це єдине, що взагалі
+  // можна перевірити локально: контрольної суми в адресах Solana немає.
+  it('carries only well-formed addresses', () => {
     const registry = buildChannelRegistry(DEFAULT_REGISTRY)
 
-    expect(registry.tipAccounts.size).toBe(0)
-    expect(registry.groupByTipAccount(ACCOUNT_A)).toBeNull()
+    expect(registry.tipAccounts.size).toBeGreaterThan(0)
+    for (const account of registry.tipAccounts) {
+      expect(isSolanaAddress(account)).toBe(true)
+    }
+  })
+
+  it('gives every observed group but plain RPC something to recognise', () => {
+    const registry = buildChannelRegistry(DEFAULT_REGISTRY)
+
+    for (const group of registry.groups) {
+      if (group.id === RPC_GROUP_ID) continue
+      expect(group.tipAccounts.length).toBeGreaterThan(0)
+    }
+  })
+
+  it('has the published Jito tip accounts', () => {
+    const registry = buildChannelRegistry(DEFAULT_REGISTRY)
+
+    expect(registry.groupById('jito')?.tipAccounts).toHaveLength(8)
+    expect(registry.groupByTipAccount('96gYZGLnJYVFmbjzopPSU6QiEV5fGqZNyN9nmNhvrZU5')?.id).toBe(
+      'jito',
+    )
   })
 
   it('resolves a tip account to its group', () => {

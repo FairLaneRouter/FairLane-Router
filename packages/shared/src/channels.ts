@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { isSolanaAddress } from './base58.ts'
 
 /**
  * Канал, до якого потрапляє транзакція без чайових жодній відомій групі, але з
@@ -7,10 +8,11 @@ import { z } from 'zod'
  */
 export const RPC_GROUP_ID = 'rpc'
 
-const BASE58_ADDRESS = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/
 const ENDPOINT_ENV_KEY = /^CHANNEL_[A-Z0-9]+(?:_[A-Z0-9]+)*_ENDPOINT$/
 
-const addressSchema = z.string().regex(BASE58_ADDRESS, 'не схоже на адресу Solana')
+const addressSchema = z
+  .string()
+  .refine(isSolanaAddress, 'не адреса Solana: base58 має розкодуватись у 32 байти')
 const idSchema = z.string().regex(/^[a-z0-9-]+$/, 'ідентифікатор — тільки [a-z0-9-]')
 
 export const groupDefinitionSchema = z.object({

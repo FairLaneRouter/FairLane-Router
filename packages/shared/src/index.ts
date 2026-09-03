@@ -1,4 +1,5 @@
 export * from './attribution.ts'
+export * from './base58.ts'
 export * from './channels.ts'
 export * from './channels.data.ts'
 export * from './config.ts'

@@ -59,6 +59,7 @@ const LIMITS = [
   `Checking a figure by hand is only possible while the transaction itself is still stored — the last ${TRANSACTION_LEVEL_HOURS} hours. Beyond that only hourly aggregates remain, for ${AGGREGATE_LEVEL_DAYS} days, and a single transaction can no longer be recomputed from them.`,
   'Services that accept tips on the same service accounts cannot be told apart on-chain. They are shown as one group, and the brand inside a group is never guessed at — not from the size of the tip, not from the shape of the bundle, not from the position in the block. What is measured is the cost of a path, not of a brand.',
   'Being visible here and being available to send through are two different things. A channel whose service accounts are on-chain is measured whether or not this dashboard can send anything through it.',
+  'Two of the services hand out private service accounts to high-volume clients, and those are not published anywhere. A transaction that tips one of them is indistinguishable on-chain from an ordinary transfer, so it is counted as unattributed. What a group shows here is therefore a lower bound on its traffic, never an overstatement.',
   'The unattributed share is published next to the figures rather than hidden inside them. A transaction that cannot be assigned to a group is never assigned to the nearest one.',
 ]
 

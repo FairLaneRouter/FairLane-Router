@@ -57,6 +57,9 @@ type SlotStats = {
   readonly accountsModeHasFee: boolean
   readonly accountsModeHasBalances: boolean
   readonly accountsModeHasAccountKeys: boolean
+  readonly accountsModeHasSignatures: boolean
+  readonly accountsModeHasComputeUnits: boolean
+  readonly fullModeHasComputeUnits: boolean
 }
 
 function parseArgs(argv: readonly string[]): Args {
@@ -127,16 +130,31 @@ function blockParams(slot: number, details: 'full' | 'accounts') {
 }
 
 type RawTransaction = {
-  transaction?: { message?: { accountKeys?: unknown }; signatures?: unknown }
-  meta?: { err?: unknown; fee?: unknown; preBalances?: unknown; postBalances?: unknown }
+  transaction?: {
+    message?: { accountKeys?: unknown }
+    accountKeys?: unknown
+    signatures?: unknown
+  }
+  meta?: {
+    err?: unknown
+    fee?: unknown
+    preBalances?: unknown
+    postBalances?: unknown
+    computeUnitsConsumed?: unknown
+  }
 }
 
+/**
+ * Форма відповіді різна в двох режимах, і це не дрібниця: у `full` ключі
+ * лежать під `transaction.message` рядками, у `accounts` — прямо під
+ * `transaction`, об'єктами {pubkey, signer, writable, source}. Індексатор
+ * має читати обидві, інакше дешевший режим виглядає непридатним, хоча
+ * придатний.
+ */
 function accountNames(tx: RawTransaction): string[] {
-  const keys = tx.transaction?.message?.accountKeys
+  const keys = tx.transaction?.accountKeys ?? tx.transaction?.message?.accountKeys
   if (!Array.isArray(keys)) return []
 
-  // У режимі `accounts` ключі приходять об'єктами {pubkey, signer, writable},
-  // у `full` — рядками. Це і є та різниця у формі, заради якої існує перевірка.
   return keys.map((key) =>
     typeof key === 'string' ? key : String((key as { pubkey?: unknown }).pubkey ?? ''),
   )
@@ -195,6 +213,11 @@ async function measureSlot(url: string, slot: number): Promise<SlotStats> {
     accountsModeHasBalances:
       Array.isArray(sample?.meta?.preBalances) && Array.isArray(sample?.meta?.postBalances),
     accountsModeHasAccountKeys: sample !== undefined && accountNames(sample).length > 0,
+    accountsModeHasSignatures: Array.isArray(sample?.transaction?.signatures),
+    accountsModeHasComputeUnits: typeof sample?.meta?.computeUnitsConsumed === 'number',
+    fullModeHasComputeUnits: transactions.some(
+      (tx) => typeof tx.meta?.computeUnitsConsumed === 'number',
+    ),
   }
 }
 
@@ -233,9 +256,12 @@ function report(stats: readonly SlotStats[], stride: number): void {
     `  з пріоритетною комісією ${median(stats.map((s) => s.withPriorityFee))}`,
     '',
     'Чи вистачає режиму accounts для вартості посадки:',
-    `  meta.fee            ${stats.every((s) => s.accountsModeHasFee) ? 'є' : 'НЕМАЄ'}`,
-    `  pre/postBalances    ${stats.every((s) => s.accountsModeHasBalances) ? 'є' : 'НЕМАЄ'}`,
-    `  accountKeys         ${stats.every((s) => s.accountsModeHasAccountKeys) ? 'є' : 'НЕМАЄ'}`,
+    `  meta.fee              ${stats.every((s) => s.accountsModeHasFee) ? 'є' : 'НЕМАЄ'}`,
+    `  pre/postBalances      ${stats.every((s) => s.accountsModeHasBalances) ? 'є' : 'НЕМАЄ'}`,
+    `  accountKeys           ${stats.every((s) => s.accountsModeHasAccountKeys) ? 'є' : 'НЕМАЄ'}`,
+    `  signatures            ${stats.every((s) => s.accountsModeHasSignatures) ? 'є' : 'НЕМАЄ'}`,
+    `  computeUnitsConsumed  ${stats.every((s) => s.accountsModeHasComputeUnits) ? 'є' : 'НЕМАЄ'}` +
+      `  (у full: ${stats.every((s) => s.fullModeHasComputeUnits) ? 'є' : 'НЕМАЄ'})`,
     '',
     `За кроком ${stride}: ${Math.round(readsPerDay)} читань на добу, ` +
       `${mb(readsPerDay * fullBytes)} трафіку на добу в режимі full`,

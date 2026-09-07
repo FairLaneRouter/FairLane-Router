@@ -1,4 +1,4 @@
-import type { BlockTransaction } from './rpc.ts'
+import { resolveAccountKeys, type BlockTransaction } from './rpc.ts'
 
 export const BASE_FEE_PER_SIGNATURE = 5000
 
@@ -14,7 +14,7 @@ export type LandingCost = {
 }
 
 export function isVoteTransaction(tx: BlockTransaction): boolean {
-  return tx.transaction.message.accountKeys.includes(VOTE_PROGRAM_ID)
+  return resolveAccountKeys(tx).includes(VOTE_PROGRAM_ID)
 }
 
 /**
@@ -26,7 +26,7 @@ function sumTips(
   tx: BlockTransaction,
   tipAccounts: ReadonlySet<string>,
 ): { total: number; accounts: string[] } {
-  const { accountKeys } = tx.transaction.message
+  const accountKeys = resolveAccountKeys(tx)
   const { preBalances, postBalances } = tx.meta
   const accounts: string[] = []
   let total = 0

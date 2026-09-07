@@ -17,7 +17,7 @@ function tx(o: Overrides = {}): BlockTransaction {
   return {
     transaction: {
       signatures: o.signatures ?? ['sig'],
-      message: { accountKeys },
+      message: { accountKeys, instructions: [] },
     },
     meta: {
       err: o.err ?? null,
@@ -126,6 +126,32 @@ describe('computeLandingCost', () => {
     expect(
       computeLandingCost(tx({ computeUnitsConsumed: undefined }), new Set()).computeUnits,
     ).toBeNull()
+  })
+
+  // Транзакція v0 підтягує частину акаунтів із таблиці пошуку, і баланси
+  // адресуються наскрізним індексом — статичні ключі, потім записувані з
+  // таблиці, потім читані. За самими лише статичними чайові були б невидимі.
+  it('sees a tip paid to an account loaded from a lookup table', () => {
+    const cost = computeLandingCost(
+      {
+        transaction: {
+          signatures: ['sig'],
+          message: { accountKeys: ['payer'], instructions: [] },
+        },
+        meta: {
+          err: null,
+          fee: 5000,
+          computeUnitsConsumed: 1000,
+          preBalances: [1_000_000, 0],
+          postBalances: [800_000, 195_000],
+          loadedAddresses: { writable: [TIP_ACCOUNT], readonly: [] },
+        },
+      },
+      new Set([TIP_ACCOUNT]),
+    )
+
+    expect(cost.tipTotal).toBe(195_000)
+    expect(cost.total).toBe(200_000)
   })
 
   it('is unaffected by a balance array shorter than the account list', () => {

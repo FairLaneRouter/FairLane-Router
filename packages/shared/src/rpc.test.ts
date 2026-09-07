@@ -7,7 +7,10 @@ const block = {
   blockTime: 1756330000,
   transactions: [
     {
-      transaction: { signatures: ['sig1'], message: { accountKeys: ['payer', 'tip1'] } },
+      transaction: {
+        signatures: ['sig1'],
+        message: { accountKeys: ['payer', 'tip1'], instructions: [{ programIdIndex: 1 }] },
+      },
       meta: {
         err: null,
         fee: 9700,

@@ -26,7 +26,7 @@ function tx(o: Overrides = {}): BlockTransaction {
   const postBalances = accountKeys.map((key) => (key === TIP_ACCOUNT ? 1_000_000 + tip : 1_000_000))
 
   return {
-    transaction: { signatures: ['sig'], message: { accountKeys } },
+    transaction: { signatures: ['sig'], message: { accountKeys, instructions: [] } },
     meta: {
       err: o.failed ? { InstructionError: [0, 'Custom'] } : null,
       fee: o.fee ?? BASE_FEE_PER_SIGNATURE,

@@ -22,18 +22,36 @@ export class SlotSkippedError extends RpcError {
   }
 }
 
+/**
+ * Адреси, підтягнуті з таблиць пошуку транзакцією v0. Індексуються ПІСЛЯ
+ * статичних ключів повідомлення — див. `resolveAccountKeys`.
+ */
+const loadedAddressesSchema = z.object({
+  writable: z.array(z.string()),
+  readonly: z.array(z.string()),
+})
+
+/** Із інструкції потрібен лише виконавець: `program_ids` посадки (FR-001). */
+const instructionSchema = z.object({
+  programIdIndex: z.number().int().nonnegative(),
+})
+
 const metaSchema = z.object({
   err: z.unknown().nullable(),
   fee: z.number().int().nonnegative(),
   computeUnitsConsumed: z.number().int().nonnegative().optional(),
   preBalances: z.array(z.number().int().nonnegative()),
   postBalances: z.array(z.number().int().nonnegative()),
+  loadedAddresses: loadedAddressesSchema.optional(),
 })
 
 const transactionSchema = z.object({
   transaction: z.object({
     signatures: z.array(z.string()).min(1),
-    message: z.object({ accountKeys: z.array(z.string()) }),
+    message: z.object({
+      accountKeys: z.array(z.string()),
+      instructions: z.array(instructionSchema),
+    }),
   }),
   meta: metaSchema,
 })
@@ -47,6 +65,21 @@ export const blockSchema = z.object({
 
 export type Block = z.infer<typeof blockSchema>
 export type BlockTransaction = z.infer<typeof transactionSchema>
+
+/**
+ * Повний список акаунтів транзакції в тому самому порядку, у якому їх індексує
+ * сам протокол: статичні ключі повідомлення, далі записувані з таблиць пошуку,
+ * далі читані. За цими індексами адресуються і `preBalances`/`postBalances`, і
+ * `programIdIndex`, тому брати в транзакції v0 самі лише статичні ключі
+ * означає промазати повз частину акаунтів — зокрема повз службовий, на який
+ * пішли чайові.
+ */
+export function resolveAccountKeys(tx: BlockTransaction): readonly string[] {
+  const loaded = tx.meta.loadedAddresses
+  if (loaded === undefined) return tx.transaction.message.accountKeys
+
+  return [...tx.transaction.message.accountKeys, ...loaded.writable, ...loaded.readonly]
+}
 
 const envelopeSchema = z.object({
   result: z.unknown().optional(),

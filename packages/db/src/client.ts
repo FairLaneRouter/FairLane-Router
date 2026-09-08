@@ -8,9 +8,12 @@ export type DatabaseOptions = {
 }
 
 export type DatabaseHandle = {
-  readonly db: ReturnType<typeof drizzle<typeof schema>>
+  readonly db: Database
   close(): Promise<void>
 }
+
+/** З'єднання без права його закрити — саме це приймають сховища в `apps/*`. */
+export type Database = ReturnType<typeof drizzle<typeof schema>>
 
 /**
  * З'єднання йде через pgbouncer у режимі транзакцій (Supabase, порт 6543).

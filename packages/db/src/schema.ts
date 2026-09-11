@@ -114,6 +114,10 @@ export const landings = pgTable(
     index('landings_payer_time_idx').on(table.feePayer, table.blockTime),
     // TTL-чистка (T029) ходить саме цим порядком.
     index('landings_created_at_idx').on(table.createdAt),
+    // Щогодинна згортка (T028) бере проміжок `block_time` без групи, а в
+    // `landings_group_time_idx` час іде другим ключем і такому запиту не
+    // служить. Без цього індексу згортка щогодини читає всю таблицю.
+    index('landings_block_time_idx').on(table.blockTime),
   ],
 )
 

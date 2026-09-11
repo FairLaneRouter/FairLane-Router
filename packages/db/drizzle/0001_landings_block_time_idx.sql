@@ -1,0 +1,1 @@
+CREATE INDEX "landings_block_time_idx" ON "landings" USING btree ("block_time");

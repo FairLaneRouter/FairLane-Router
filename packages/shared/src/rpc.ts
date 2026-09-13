@@ -2,6 +2,14 @@ import { z } from 'zod'
 
 const SLOT_SKIPPED_CODES = new Set([-32007, -32009])
 
+/**
+ * `Block not available for slot N`. Вузол ще не має блока — не «його немає», а
+ * «його немає **поки що**»: голова за рівнем `confirmed` випереджає те, що
+ * вузол уже віддає в `getBlock`. Плутати з пропущеним слотом не можна, бо
+ * рішення протилежні: пропущений слот дочитувати марно, цей — обов'язково.
+ */
+const BLOCK_NOT_AVAILABLE_CODE = -32004
+
 export class RpcError extends Error {
   override readonly name = 'RpcError'
   readonly code: number | undefined
@@ -18,6 +26,17 @@ export class SlotSkippedError extends RpcError {
 
   constructor(slot: number, code: number) {
     super(`Слот ${slot} пропущений або відсутній у ledger`, code)
+    this.slot = slot
+  }
+}
+
+/** Блока ще немає у вузла. Слот існує, і повторна спроба має сенс. */
+export class BlockNotAvailableError extends RpcError {
+  override readonly name = 'RpcError'
+  readonly slot: number
+
+  constructor(slot: number, code: number) {
+    super(`Блок слота ${slot} ще недоступний вузлу`, code)
     this.slot = slot
   }
 }
@@ -141,6 +160,9 @@ export function createRpcClient(options: RpcClientOptions): RpcClient {
         // такий слот не існує і ніколи не з'явиться, дочитувати його марно.
         if (slot !== undefined && SLOT_SKIPPED_CODES.has(error.code)) {
           throw new SlotSkippedError(slot, error.code)
+        }
+        if (slot !== undefined && error.code === BLOCK_NOT_AVAILABLE_CODE) {
+          throw new BlockNotAvailableError(slot, error.code)
         }
         throw new RpcError(`${method}: ${error.message}`, error.code)
       }

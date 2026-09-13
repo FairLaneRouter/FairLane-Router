@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { createRpcClient, RpcError, SlotSkippedError } from './rpc.ts'
+import { BlockNotAvailableError, createRpcClient, RpcError, SlotSkippedError } from './rpc.ts'
 
 const block = {
   blockhash: 'Fh1s9…',
@@ -80,6 +80,26 @@ describe('createRpcClient', () => {
     const rpc = createRpcClient({ url: 'https://rpc.example', fetch })
 
     await expect(rpc.getBlock(341882103)).rejects.toBeInstanceOf(SlotSkippedError)
+  })
+
+  // «Блока ще немає» і «слота не існує» приходять обидва помилкою, а рішення
+  // за ними протилежні: перший дочитується обов'язково, другий — ніколи.
+  it('distinguishes a block the node does not have yet from a skipped slot', async () => {
+    const fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        jsonrpc: '2.0',
+        id: 1,
+        error: { code: -32004, message: 'Block not available for slot 341882103' },
+      }),
+    })
+    const rpc = createRpcClient({ url: 'https://rpc.example', fetch })
+
+    const failure = await rpc.getBlock(341882103).catch((cause: unknown) => cause)
+
+    expect(failure).toBeInstanceOf(BlockNotAvailableError)
+    expect(failure).not.toBeInstanceOf(SlotSkippedError)
   })
 
   it('raises RpcError with the node code on any other rpc error', async () => {

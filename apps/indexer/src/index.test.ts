@@ -167,6 +167,79 @@ function maintenanceStores(rollupFails = false): {
 }
 
 describe('runMaintenance', () => {
+  // Дочитане має потрапити в агрегат того самого проходу: інакше година,
+  // заповнена заднім числом, згорнеться лише наступного разу — а до
+  // наступного разу її посадок може вже не бути (FR-009, FR-043).
+  it('heals the gaps before it rolls up', async () => {
+    const store = maintenanceStores()
+    const order = store.order
+
+    await runMaintenance({
+      gaps: {
+        store: {
+          lastObservedSlot: () => Promise.resolve(null),
+          open: () => Promise.resolve(),
+          listOpen: () => {
+            order.push('gaps')
+            return Promise.resolve([])
+          },
+          narrow: () => Promise.resolve(),
+          close: () => Promise.resolve(),
+        },
+        rpc: {
+          getSlot: () => Promise.resolve(1_000_000),
+          getBlock: () => Promise.reject(new Error('не має викликатись')),
+        },
+        onSlot: () => Promise.resolve(),
+        sampleEveryN: 100,
+        logger: silent,
+        ttlHours: 48,
+      },
+      rollup: store.rollup,
+      retention: store.retention,
+      rpcSampleRate: 0.05,
+      logger: silent,
+      now: new Date('2026-08-28T14:20:00.000Z'),
+    })
+
+    expect(order[0]).toBe('gaps')
+    expect(order.at(-1)).toBe('retention')
+  })
+
+  // Борг зачекає до наступного проходу, а згортка чекати не може: її вікно
+  // вужче за строк зберігання.
+  it('rolls up even when the gap pass fails', async () => {
+    const store = maintenanceStores()
+
+    await runMaintenance({
+      gaps: {
+        store: {
+          lastObservedSlot: () => Promise.resolve(null),
+          open: () => Promise.resolve(),
+          listOpen: () => Promise.reject(new Error('база недоступна')),
+          narrow: () => Promise.resolve(),
+          close: () => Promise.resolve(),
+        },
+        rpc: {
+          getSlot: () => Promise.resolve(1_000_000),
+          getBlock: () => Promise.reject(new Error('не має викликатись')),
+        },
+        onSlot: () => Promise.resolve(),
+        sampleEveryN: 100,
+        logger: silent,
+        ttlHours: 48,
+      },
+      rollup: store.rollup,
+      retention: store.retention,
+      rpcSampleRate: 0.05,
+      logger: silent,
+      now: new Date('2026-08-28T14:20:00.000Z'),
+    })
+
+    expect(store.order).toContain('rollup')
+    expect(store.order.at(-1)).toBe('retention')
+  })
+
   // Агрегат рахується з потранзакційних записів, поки вони ще є; після
   // видалення відновити його нема з чого (FR-043).
   it('rolls up before it clears', async () => {

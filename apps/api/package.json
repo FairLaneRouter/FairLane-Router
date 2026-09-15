@@ -4,8 +4,17 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "start": "node --env-file-if-exists=../../.env src/index.ts",
     "build": "tsc -p tsconfig.json",
     "test": "vitest run --passWithNoTests",
     "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@fairlane/db": "workspace:^",
+    "@fairlane/shared": "workspace:^",
+    "@hono/node-server": "^1.19.9",
+    "drizzle-orm": "^0.45.2",
+    "hono": "^4.13.0",
+    "zod": "^4.4.3"
   }
 }

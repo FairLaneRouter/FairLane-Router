@@ -1,5 +1,5 @@
 import { groupHourly, type Database } from '@fairlane/db'
-import type { Logger } from '@fairlane/shared'
+import { sampleWeight, type Logger } from '@fairlane/shared'
 
 const HOUR_MS = 3_600_000
 
@@ -55,29 +55,6 @@ export function completeHours(now: Date, count: number): Date[] {
   const current = startOfHour(now).getTime()
 
   return Array.from({ length: count }, (_, index) => new Date(current - (count - index) * HOUR_MS))
-}
-
-/**
- * Скільки подібних до себе посадок представляє один збережений рядок вибірки.
- * Транзакції без відомих чайових зберігаються з часткою `RPC_SAMPLE_RATE`
- * (PLAN → «Вибірка»), і без цієї ваги частка звичайного RPC у зведенні вийшла
- * б удвадцятеро меншою за справжню.
- *
- * Вага ціла навмисно: поріг рангу в процентилі рахується цілими, і дробова
- * вага внесла б туди похибку з плаваючою комою — рівно там, де вона зсуває
- * результат на сусіднє спостереження.
- *
- * `rate = 0` означає «звичайний RPC не зберігати»; рядки з позначкою вибірки
- * тоді лишились від іншого значення, а якою була та частка, дані не пам'ятають.
- * Вага 1 у цьому випадку занижує їхню частку — і це чесніше за вигадане число.
- */
-export function sampleWeight(rpcSampleRate: number): number {
-  if (!Number.isFinite(rpcSampleRate) || rpcSampleRate < 0 || rpcSampleRate > 1) {
-    throw new RangeError(`rpcSampleRate має бути в межах 0…1, отримано ${rpcSampleRate}`)
-  }
-  if (rpcSampleRate <= 0 || rpcSampleRate >= 1) return 1
-
-  return Math.max(1, Math.round(1 / rpcSampleRate))
 }
 
 type WeightedSample = {

@@ -25,7 +25,7 @@ async function main(): Promise<void> {
   const { db, close } = createDatabase(config.databaseUrl)
   const registry = buildChannelRegistry(DEFAULT_REGISTRY, config.channelEndpoints)
 
-  const app = createApp({
+  const { app, close: stopWatching } = createApp({
     summary: createSummaryStore(db, { rpcSampleRate: config.rpcSampleRate }),
     groups: registry.groups,
     staleAfterMs: staleAfterMs(config.sampleEveryN),
@@ -41,6 +41,7 @@ async function main(): Promise<void> {
 
   const stop = (signal: string) => {
     logger.info('зупинка на сигналі', { signal })
+    stopWatching()
     server.close(() => {
       void close().then(() => logger.info('API зупинено'))
     })

@@ -37,6 +37,8 @@ const facts: SummaryWindowFacts = {
 
 type Call = { readonly from: Date; readonly to: Date }
 
+const NO_WATERMARK = { slot: null, writtenAt: null }
+
 function fakeStore(
   aggregates: readonly GroupAggregate[] = [aggregate()],
 ): SummaryStore & { readonly calls: Call[] } {
@@ -48,14 +50,20 @@ function fakeStore(
       calls.push({ from, to })
       return Promise.resolve({ aggregates, facts })
     },
+    watermark: () => Promise.resolve(NO_WATERMARK),
   }
 }
 
 function failingStore(): SummaryStore {
-  return { read: () => Promise.reject(new Error('база недоступна')) }
+  return {
+    read: () => Promise.reject(new Error('база недоступна')),
+    watermark: () => Promise.resolve(NO_WATERMARK),
+  }
 }
 
 function app(store: SummaryStore, cacheTtlMs = 0) {
+  // Стрічка тут не задіяна, тому опитування сховища не заводиться: підписників
+  // немає, а без них вузол таймера не тримає.
   return createApp({
     summary: store,
     groups: registry.groups,
@@ -63,7 +71,7 @@ function app(store: SummaryStore, cacheTtlMs = 0) {
     logger: silent,
     cacheTtlMs,
     now: () => NOW,
-  })
+  }).app
 }
 
 describe('GET /v1/summary', () => {
@@ -118,6 +126,7 @@ describe('GET /v1/summary', () => {
           attempts += 1
           return Promise.reject(new Error('база недоступна'))
         },
+        watermark: () => Promise.resolve(NO_WATERMARK),
       },
       5_000,
     )

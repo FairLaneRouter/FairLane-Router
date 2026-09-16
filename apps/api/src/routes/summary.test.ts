@@ -66,6 +66,7 @@ function app(store: SummaryStore, cacheTtlMs = 0) {
   // немає, а без них вузол таймера не тримає.
   return createApp({
     summary: store,
+    health: { read: () => Promise.reject(new Error('health у цих тестах не задіяний')) },
     groups: registry.groups,
     staleAfterMs: staleAfterMs(100),
     logger: silent,

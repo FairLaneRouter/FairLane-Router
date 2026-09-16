@@ -8,6 +8,7 @@ import {
   staleAfterMs,
 } from '@fairlane/shared'
 import { createApp } from './app.ts'
+import { createHealthStore } from './routes/health.ts'
 import { createSummaryStore } from './routes/summary.ts'
 
 /**
@@ -27,6 +28,7 @@ async function main(): Promise<void> {
 
   const { app, close: stopWatching } = createApp({
     summary: createSummaryStore(db, { rpcSampleRate: config.rpcSampleRate }),
+    health: createHealthStore(db),
     groups: registry.groups,
     staleAfterMs: staleAfterMs(config.sampleEveryN),
     logger,

@@ -1,5 +1,6 @@
 import type { ChannelGroup, Logger } from '@fairlane/shared'
 import { Hono } from 'hono'
+import { cors } from 'hono/cors'
 import { healthRoute, type HealthStore } from './routes/health.ts'
 import { createSummaryHub, streamRoute, type SummaryHub } from './routes/stream.ts'
 import { createSummaryProvider, summaryRoute, type SummaryStore } from './routes/summary.ts'
@@ -57,6 +58,20 @@ export function createApp(options: AppOptions): App {
   })
 
   const app = new Hono()
+
+  /**
+   * Зведення, стрічка і health публічні за побудовою: без ключа, без
+   * персональних даних, з тим самим тілом для будь-кого (FR-014, FR-049).
+   * Дозвіл будь-якому джерелу тут нічого не відкриває — читати їх однаково
+   * може хто завгодно, — а без нього дашборд на іншому домені не працює
+   * взагалі, як не працював би й чужий інтегратор.
+   *
+   * Маршрути з ключем (M2) під це правило не підпадають: їм потрібен інший
+   * дозвіл, і він видаватиметься окремо, разом із самими маршрутами.
+   */
+  app.use('/v1/summary', cors({ origin: '*' }))
+  app.use('/v1/summary/stream', cors({ origin: '*' }))
+  app.use('/health', cors({ origin: '*' }))
 
   app.route('/', summaryRoute({ provider, logger }))
   app.route(

@@ -144,54 +144,6 @@ export const WINDOW_TOTALS = {
 }
 
 /* ------------------------------------------------------------------ */
-/* recorder tape — median overpay, lamports, last 60 min, 5 min steps  */
-/* ------------------------------------------------------------------ */
-
-export interface TapeSeries {
-  id: string
-  name: string
-  /** relative step size used when the tape advances */
-  volatility: number
-  points: number[]
-}
-
-export const TAPE: TapeSeries[] = [
-  {
-    id: 'direct',
-    name: 'Direct RPC',
-    volatility: 0.09,
-    points: [7_100, 7_800, 8_200, 9_400, 8_800, 8_100, 7_900, 8_600, 9_900, 9_200, 8_700, 8_900],
-  },
-  {
-    id: 'northlane',
-    name: 'Northlane',
-    volatility: 0.1,
-    points: [
-      28_400, 30_100, 33_800, 41_200, 38_600, 34_900, 33_100, 35_800, 44_700, 39_300, 36_200,
-      35_400,
-    ],
-  },
-  {
-    id: 'kestrel',
-    name: 'Kestrel',
-    volatility: 0.006,
-    points: [
-      1_031_000, 1_029_400, 1_034_700, 1_041_200, 1_038_900, 1_033_100, 1_030_800, 1_032_600,
-      1_044_300, 1_039_700, 1_035_200, 1_033_800,
-    ],
-  },
-  {
-    id: 'halyard',
-    name: 'Halyard',
-    volatility: 0.08,
-    points: [
-      19_800, 20_400, 21_900, 24_300, 23_100, 21_700, 20_900, 21_400, 25_200, 23_600, 22_000,
-      21_100,
-    ],
-  },
-]
-
-/* ------------------------------------------------------------------ */
 /* screen 2 — side by side                                             */
 /* ------------------------------------------------------------------ */
 

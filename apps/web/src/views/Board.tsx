@@ -1,312 +1,312 @@
+import type { Summary, SummaryGroup } from '@fairlane/shared/summary'
 import { useState } from 'react'
 import CostCanvas from '@/components/CostCanvas'
 import Marker from '@/components/Marker'
-import RecorderTape from '@/components/RecorderTape'
-import {
-  fmtInt,
-  fmtUsd,
-  GROUPS,
-  REFERENCE_LAMPORTS,
-  SOL_USD,
-  WINDOW_SLOTS_SAMPLED,
-  WINDOW_TOTAL_LANDINGS,
-  WINDOW_TOTALS,
-} from '@/lib/mock'
+import { fmtAge, fmtInt, fmtLamports, fmtShare, WINDOW_LABELS } from '@/lib/format'
+import type { SummaryWindow } from '@/lib/api'
+import { useSummary } from '@/lib/useSummary'
 
-type WindowKey = '15 min' | '1 h' | '24 h'
-const WINDOWS: WindowKey[] = ['15 min', '1 h', '24 h']
+const WINDOWS: { key: SummaryWindow; label: string }[] = [
+  { key: '15m', label: '15 min' },
+  { key: '1h', label: '1 h' },
+  { key: '24h', label: '24 h' },
+]
 
-const Total = ({
+const COLUMNS = ['group', 'landings', 'share', 'p10', 'median', 'p90', 'overpay', 'sendable']
+
+const Figure = ({
   caption,
-  lamports,
-  sol,
-  usd,
+  value,
+  note,
   strong = false,
 }: {
   caption: string
-  lamports: number
-  sol: string
-  usd: number
+  value: string
+  note: string
   strong?: boolean
 }) => (
   <div className="min-w-[190px] flex-1 border-t border-[hsl(var(--rule))] pt-2">
     <div className="u-caps text-[9px] text-[hsl(var(--ink-muted))]">{caption}</div>
     <div
-      className={`u-num mt-1 tabular-nums ${
-        strong ? 'text-[26px] font-medium' : 'text-[22px]'
-      } leading-none`}
+      className={`u-num mt-1 tabular-nums ${strong ? 'text-[26px] font-medium' : 'text-[22px]'} leading-none`}
     >
-      {fmtUsd(usd)}
+      {value}
     </div>
-    <div className="u-num mt-1 text-[11px] text-[hsl(var(--ink-muted))]">{sol} SOL</div>
-    <div className="u-num text-[11px] text-[hsl(var(--ink-muted))]">
-      {fmtInt(lamports)} lamports
-    </div>
+    <div className="u-num mt-1 text-[11px] text-[hsl(var(--ink-muted))]">{note}</div>
   </div>
 )
 
-const Board = () => {
-  const [win, setWin] = useState<WindowKey>('15 min')
-  const empty = win !== '15 min'
-  const rows = GROUPS
+/**
+ * Найдешевша група серед тих, яким вистачило спостережень. Сервер уже
+ * впорядкував групи за медіаною і поставив недостатні в кінець (FR-012), тож
+ * шукати мінімум тут не треба — досить узяти першу придатну.
+ */
+const cheapest = (groups: readonly SummaryGroup[]): SummaryGroup | undefined =>
+  groups.find((group) => group.sufficientData)
+
+const Sendability = ({ group }: { group: SummaryGroup }) =>
+  group.isSendable ? null : (
+    <div className="u-label text-[11px] text-[hsl(var(--ink-muted))]">
+      observed only — cannot route through
+    </div>
+  )
+
+const Row = ({ group }: { group: SummaryGroup }) => (
+  <tr className="border-b border-[hsl(var(--grid-minor))] align-top">
+    <td className="py-2 pr-4 text-left">
+      <div className="u-label text-[14px] font-semibold leading-tight">{group.name}</div>
+      {group.members.length > 1 && (
+        <div className="u-label text-[11px] text-[hsl(var(--ink-muted))]">
+          {group.members.join(', ')}
+        </div>
+      )}
+      <Sendability group={group} />
+    </td>
+    {group.sufficientData ? (
+      <>
+        <td className="u-num py-2 text-right text-[12px]">{fmtLamports(group.landings)}</td>
+        <td className="u-num py-2 text-right text-[12px]">{fmtShare(group.share)}</td>
+        <td className="u-num py-2 text-right text-[12px]">{fmtLamports(group.costP10)}</td>
+        <td className="u-num py-2 text-right text-[12px] font-medium">
+          {fmtLamports(group.costP50)}
+        </td>
+        <td className="u-num py-2 text-right text-[12px]">{fmtLamports(group.costP90)}</td>
+        <td className="u-num py-2 text-right text-[12px] text-[hsl(var(--overpay))]">
+          {fmtLamports(group.overpayP50)}
+        </td>
+        <td className="u-label py-2 text-right text-[12px]">{group.isSendable ? 'yes' : 'no'}</td>
+      </>
+    ) : (
+      <>
+        <td className="u-num py-2 text-right text-[12px]">{fmtInt(group.observations)}</td>
+        <td colSpan={6} className="u-label py-2 text-right text-[12px] text-[hsl(var(--ink-muted))]">
+          not enough data
+        </td>
+      </>
+    )}
+  </tr>
+)
+
+const NarrowRow = ({ group }: { group: SummaryGroup }) => (
+  <div className="border-b border-[hsl(var(--rule))] py-3">
+    <div className="u-label text-[15px] font-semibold">{group.name}</div>
+    {group.members.length > 1 && (
+      <div className="u-label text-[11px] text-[hsl(var(--ink-muted))]">
+        {group.members.join(', ')}
+      </div>
+    )}
+    <Sendability group={group} />
+    {group.sufficientData ? (
+      <dl className="mt-1">
+        {(
+          [
+            ['landings', fmtLamports(group.landings)],
+            ['share', fmtShare(group.share)],
+            ['p10', fmtLamports(group.costP10)],
+            ['median', fmtLamports(group.costP50)],
+            ['p90', fmtLamports(group.costP90)],
+            ['overpay', fmtLamports(group.overpayP50)],
+            ['sendable', group.isSendable ? 'yes' : 'no'],
+          ] as [string, string][]
+        ).map(([key, value]) => (
+          <div key={key} className="flex items-baseline justify-between">
+            <dt className="u-caps text-[9px] text-[hsl(var(--ink-muted))]">{key}</dt>
+            <dd
+              className={`u-num text-[12px] ${key === 'overpay' ? 'text-[hsl(var(--overpay))]' : ''}`}
+            >
+              {value}
+            </dd>
+          </div>
+        ))}
+      </dl>
+    ) : (
+      <div className="mt-1 flex justify-between">
+        <span className="u-caps text-[9px] text-[hsl(var(--ink-muted))]">observations</span>
+        <span className="u-num text-[12px]">
+          {fmtInt(group.observations)} · not enough data
+        </span>
+      </div>
+    )}
+  </div>
+)
+
+const WindowPicker = ({
+  value,
+  onChange,
+}: {
+  value: SummaryWindow
+  onChange: (window: SummaryWindow) => void
+}) => (
+  <section>
+    <div className="flex items-center gap-4 border-y border-[hsl(var(--rule))] py-2">
+      <span className="u-caps text-[9px] text-[hsl(var(--ink-muted))]">window</span>
+      <div className="flex items-center gap-3">
+        {WINDOWS.map((option, index) => (
+          <span key={option.key} className="flex items-center gap-3">
+            {index > 0 && <span className="text-[hsl(var(--rule))]">·</span>}
+            <button
+              type="button"
+              onClick={() => onChange(option.key)}
+              className={`u-num text-[12px] ${
+                value === option.key
+                  ? 'text-[hsl(var(--ink))] underline underline-offset-4'
+                  : 'text-[hsl(var(--ink-muted))] hover:text-[hsl(var(--ink))]'
+              }`}
+            >
+              {option.label}
+            </button>
+          </span>
+        ))}
+      </div>
+    </div>
+  </section>
+)
+
+const Live = ({ summary, live }: { summary: Summary; live: boolean }) => (
+  <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+    <span className="u-num text-[11px] text-[hsl(var(--ink-muted))]">
+      {WINDOW_LABELS[summary.window]} · {fmtInt(summary.slotsSampled)} slots sampled ·{' '}
+      {fmtInt(summary.observations)} observations
+    </span>
+    <Marker>{summary.isStale ? 'STALE' : live ? 'LIVE' : 'RECONNECTING'}</Marker>
+    <span className="u-num text-[11px] text-[hsl(var(--ink-muted))]">
+      newest landing {fmtAge(summary.dataAgeMs)}
+    </span>
+  </div>
+)
+
+const Dashboard = ({ summary, live }: { summary: Summary; live: boolean }) => {
+  const best = cheapest(summary.groups)
+  const measured = summary.groups.filter((group) => group.sufficientData)
+  const withoutData = summary.groups.filter((group) => !group.sufficientData)
 
   return (
     <div className="space-y-9">
-      {/* window totals */}
       <section>
         <div className="mb-2 flex flex-wrap items-baseline gap-x-3 gap-y-1">
-          <h2 className="u-caps text-[11px]">Window totals</h2>
-          <span className="u-num text-[11px] text-[hsl(var(--ink-muted))]">
-            last 15 minutes · {WINDOW_SLOTS_SAMPLED} slots sampled · {fmtInt(WINDOW_TOTAL_LANDINGS)}{' '}
-            landings
-          </span>
-          <Marker />
+          <h2 className="u-caps text-[11px]">Window</h2>
+          <Live summary={summary} live={live} />
         </div>
 
         <div className="flex flex-col gap-x-10 gap-y-5 sm:flex-row">
-          <Total
-            caption="paid for delivery"
-            lamports={WINDOW_TOTALS.paid.lamports}
-            sol={WINDOW_TOTALS.paid.sol}
-            usd={WINDOW_TOTALS.paid.usd}
-          />
-          <Total
-            caption="would have cost at the reference"
-            lamports={WINDOW_TOTALS.atReference.lamports}
-            sol={WINDOW_TOTALS.atReference.sol}
-            usd={WINDOW_TOTALS.atReference.usd}
-          />
-          <Total
-            caption="overpay"
-            lamports={WINDOW_TOTALS.overpay.lamports}
-            sol={WINDOW_TOTALS.overpay.sol}
-            usd={WINDOW_TOTALS.overpay.usd}
+          <Figure
+            caption="cheapest group, median landing"
+            value={best === undefined ? '—' : fmtLamports(best.costP50)}
+            note={best === undefined ? 'no group has enough data' : `${best.name} · lamports`}
             strong
           />
+          <Figure
+            caption="its median overpay"
+            value={best === undefined ? '—' : fmtLamports(best.overpayP50)}
+            note="against the slot reference · lamports"
+          />
+          <Figure
+            caption="unattributed"
+            value={fmtShare(summary.unattributed.share)}
+            note={`${fmtInt(summary.unattributed.observations)} observations`}
+          />
         </div>
 
-        <div className="mt-3 flex flex-wrap items-center gap-2">
-          <span className="u-num text-[12px] text-[hsl(var(--ink-muted))]">
-            at this rate, {fmtUsd(WINDOW_TOTALS.extrapolatedPerDayUsd, 0)} per day
-          </span>
-          <Marker>extrapolated</Marker>
-          <span className="u-num text-[11px] text-[hsl(var(--ink-muted))]">
-            SOL = ${SOL_USD.toFixed(2)}
-          </span>
-        </div>
+        <p className="u-label mt-3 max-w-[70ch] text-[12px] text-[hsl(var(--ink-muted))]">
+          Every figure is a median of landings actually observed in this window, in lamports. There
+          are no sums here and no conversion to dollars: the window holds a sample of the slots, not
+          all of them, and a sum over a sample would be an extrapolation, not a measurement.
+        </p>
       </section>
 
-      {/* recorder tape */}
-      <section>
-        <div className="mb-1 flex items-baseline gap-3">
-          <h2 className="u-caps text-[11px]">Recorder tape</h2>
-          <Marker />
-        </div>
-        <div className="overflow-x-auto">
-          <RecorderTape />
-        </div>
-      </section>
-
-      {/* canvas */}
       <section>
         <div className="mb-2 flex flex-wrap items-baseline gap-x-3 gap-y-1">
           <h2 className="u-caps text-[11px]">Cost per landing</h2>
           <span className="u-num text-[11px] text-[hsl(var(--ink-muted))]">
-            reference {fmtInt(REFERENCE_LAMPORTS)} lamports
+            p10 · median · p90, logarithmic axis
           </span>
-          <Marker />
         </div>
         <div className="overflow-x-auto">
-          <CostCanvas empty={empty} />
+          <CostCanvas groups={measured} />
         </div>
-        {empty && (
+        {measured.length === 0 && (
           <p className="u-label mt-2 text-[12px] text-[hsl(var(--ink-muted))]">
-            no samples in this window
+            no group in this window has enough observations to draw
           </p>
         )}
       </section>
 
-      {/* window selector */}
-      <section>
-        <div className="flex items-center gap-4 border-y border-[hsl(var(--rule))] py-2">
-          <span className="u-caps text-[9px] text-[hsl(var(--ink-muted))]">window</span>
-          <div className="flex items-center gap-3">
-            {WINDOWS.map((w, i) => (
-              <span key={w} className="flex items-center gap-3">
-                {i > 0 && <span className="text-[hsl(var(--rule))]">·</span>}
-                <button
-                  type="button"
-                  onClick={() => setWin(w)}
-                  className={`u-num text-[12px] ${
-                    win === w
-                      ? 'text-[hsl(var(--ink))] underline underline-offset-4'
-                      : 'text-[hsl(var(--ink-muted))] hover:text-[hsl(var(--ink))]'
-                  }`}
-                >
-                  {w}
-                </button>
-              </span>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* table */}
       <section>
         <div className="mb-2 flex items-baseline gap-3">
           <h2 className="u-caps text-[11px]">Groups</h2>
-          <Marker />
         </div>
 
-        {empty ? (
-          <p className="u-label border-t border-[hsl(var(--rule))] pt-2 text-[12px] text-[hsl(var(--ink-muted))]">
-            no samples in this window
-          </p>
-        ) : (
-          <>
-            {/* wide */}
-            <table className="hidden w-full border-collapse md:table">
-              <thead>
-                <tr className="border-y border-[hsl(var(--rule))]">
-                  {[
-                    'group',
-                    'landings',
-                    'share',
-                    'p10',
-                    'median',
-                    'p90',
-                    'overpay',
-                    'sendable',
-                  ].map((h, i) => (
-                    <th
-                      key={h}
-                      className={`u-caps py-2 text-[9px] font-medium text-[hsl(var(--ink-muted))] ${
-                        i === 0 ? 'text-left' : 'text-right'
-                      }`}
-                    >
-                      {h}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((g) => (
-                  <tr key={g.id} className="border-b border-[hsl(var(--grid-minor))] align-top">
-                    <td className="py-2 pr-4 text-left">
-                      <div className="u-label text-[14px] font-semibold leading-tight">
-                        {g.name}
-                      </div>
-                      {g.members && (
-                        <div className="u-label text-[11px] text-[hsl(var(--ink-muted))]">
-                          {g.members.join(', ')}
-                        </div>
-                      )}
-                      {g.sendable === 'no' && (
-                        <div className="u-label text-[11px] text-[hsl(var(--ink-muted))]">
-                          observed only — cannot route through
-                        </div>
-                      )}
-                    </td>
-                    {!g.enoughData ? (
-                      <>
-                        <td className="u-num py-2 text-right text-[12px]">{fmtInt(g.landings)}</td>
-                        <td
-                          colSpan={6}
-                          className="u-label py-2 text-right text-[12px] text-[hsl(var(--ink-muted))]"
-                        >
-                          not enough data
-                        </td>
-                      </>
-                    ) : (
-                      <>
-                        <td className="u-num py-2 text-right text-[12px]">{fmtInt(g.landings)}</td>
-                        <td className="u-num py-2 text-right text-[12px]">
-                          {g.share?.toFixed(1)}%
-                        </td>
-                        <td className="u-num py-2 text-right text-[12px]">
-                          {g.p10 === null ? '—' : fmtInt(g.p10)}
-                        </td>
-                        <td className="u-num py-2 text-right text-[12px] font-medium">
-                          {fmtInt(g.median as number)}
-                        </td>
-                        <td className="u-num py-2 text-right text-[12px]">
-                          {g.p90 === null ? '—' : fmtInt(g.p90)}
-                        </td>
-                        <td className="u-num py-2 text-right text-[12px] text-[hsl(var(--overpay))]">
-                          {fmtInt(g.overpay as number)}
-                        </td>
-                        <td className="u-label py-2 text-right text-[12px]">
-                          {g.sendable === 'yes' ? 'yes' : g.sendable === 'no' ? 'no' : '—'}
-                        </td>
-                      </>
-                    )}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-
-            {/* narrow */}
-            <div className="md:hidden">
-              {rows.map((g) => (
-                <div key={g.id} className="border-b border-[hsl(var(--rule))] py-3">
-                  <div className="u-label text-[15px] font-semibold">{g.name}</div>
-                  {g.members && (
-                    <div className="u-label text-[11px] text-[hsl(var(--ink-muted))]">
-                      {g.members.join(', ')}
-                    </div>
-                  )}
-                  {g.sendable === 'no' && (
-                    <div className="u-label text-[11px] text-[hsl(var(--ink-muted))]">
-                      observed only — cannot route through
-                    </div>
-                  )}
-                  {!g.enoughData ? (
-                    <div className="mt-1 flex justify-between">
-                      <span className="u-caps text-[9px] text-[hsl(var(--ink-muted))]">
-                        landings
-                      </span>
-                      <span className="u-num text-[12px]">
-                        {fmtInt(g.landings)} · not enough data
-                      </span>
-                    </div>
-                  ) : (
-                    <dl className="mt-1">
-                      {(
-                        [
-                          ['landings', fmtInt(g.landings)],
-                          ['share', `${g.share?.toFixed(1)}%`],
-                          ['p10', g.p10 === null ? '—' : fmtInt(g.p10)],
-                          ['median', fmtInt(g.median as number)],
-                          ['p90', g.p90 === null ? '—' : fmtInt(g.p90)],
-                          ['overpay', fmtInt(g.overpay as number)],
-                          ['sendable', g.sendable === 'unknown' ? '—' : g.sendable],
-                        ] as [string, string][]
-                      ).map(([k, v]) => (
-                        <div key={k} className="flex items-baseline justify-between">
-                          <dt className="u-caps text-[9px] text-[hsl(var(--ink-muted))]">{k}</dt>
-                          <dd
-                            className={`u-num text-[12px] ${
-                              k === 'overpay' ? 'text-[hsl(var(--overpay))]' : ''
-                            }`}
-                          >
-                            {v}
-                          </dd>
-                        </div>
-                      ))}
-                    </dl>
-                  )}
-                </div>
+        <table className="hidden w-full border-collapse md:table">
+          <thead>
+            <tr className="border-y border-[hsl(var(--rule))]">
+              {COLUMNS.map((column, index) => (
+                <th
+                  key={column}
+                  className={`u-caps py-2 text-[9px] font-medium text-[hsl(var(--ink-muted))] ${
+                    index === 0 ? 'text-left' : 'text-right'
+                  }`}
+                >
+                  {column}
+                </th>
               ))}
-            </div>
+            </tr>
+          </thead>
+          <tbody>
+            {summary.groups.map((group) => (
+              <Row key={group.groupId} group={group} />
+            ))}
+          </tbody>
+        </table>
 
-            <p className="u-label mt-3 max-w-[70ch] text-[12px] text-[hsl(var(--ink-muted))]">
-              Shares are rounded to one decimal and sum to 99.9%. Torrent is below the minimum
-              sample count, is not counted in the {fmtInt(WINDOW_TOTAL_LANDINGS)} total and is not
-              drawn on the canvas.
-            </p>
-          </>
+        <div className="md:hidden">
+          {summary.groups.map((group) => (
+            <NarrowRow key={group.groupId} group={group} />
+          ))}
+        </div>
+
+        <p className="u-label mt-3 max-w-[70ch] text-[12px] text-[hsl(var(--ink-muted))]">
+          Landings are an estimate weighted by the storage sample; observations are the rows the
+          estimate stands on. A group below {fmtInt(summary.minObservations)} observations gets no
+          figures at all and takes no place in the ranking. Shares are divided by the whole window,
+          unattributed included, so the visible shares add up to less than 100% — the difference is
+          what we do not know.
+        </p>
+        {withoutData.length > 0 && (
+          <p className="u-label mt-2 max-w-[70ch] text-[12px] text-[hsl(var(--ink-muted))]">
+            Without figures in this window:{' '}
+            {withoutData.map((group) => group.name).join(', ')}.
+          </p>
         )}
       </section>
+    </div>
+  )
+}
+
+const Board = () => {
+  const [window, setWindow] = useState<SummaryWindow>('1h')
+  const state = useSummary(window)
+
+  return (
+    <div className="space-y-9">
+      <WindowPicker value={window} onChange={setWindow} />
+
+      {state.status === 'loading' && (
+        <p className="u-label text-[13px] text-[hsl(var(--ink-muted))]">
+          reading the window…
+        </p>
+      )}
+
+      {state.status === 'error' && (
+        <div className="border border-[hsl(var(--rule))] p-3">
+          <div className="u-caps text-[10px]">no data</div>
+          <p className="u-label mt-1 max-w-[70ch] text-[12px] text-[hsl(var(--ink-muted))]">
+            {state.message}. Nothing is shown rather than zeros: an empty table would read as
+            «delivery costs nothing», which is a different statement.
+          </p>
+        </div>
+      )}
+
+      {state.status === 'ready' && <Dashboard summary={state.summary} live={state.live} />}
     </div>
   )
 }

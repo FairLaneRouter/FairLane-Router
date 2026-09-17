@@ -1,23 +1,43 @@
-import { fmtInt, fmtUsdFromLamports, GROUPS, REFERENCE_LAMPORTS } from '@/lib/mock'
-import { AXIS_MAX, AXIS_MIN, COST_TICKS, logPos, tickLabel } from '@/lib/scale'
+import type { SummaryGroup } from '@fairlane/shared/summary'
+import { fmtInt } from '@/lib/format'
+import { costDomain, domainTicks, logPos, tickLabel } from '@/lib/scale'
 
 const W = 960
 const PLOT_L = 188
-const PLOT_R = 706
+const PLOT_R = 780
 const AXIS_TOP = 30
 const ROW_H = 48
+const LABEL_R = 172
+const FIGURE_R = 956
 
 interface CostCanvasProps {
-  empty?: boolean
+  /** Тільки групи з достатніми даними: решті малювати нічого (FR-012). */
+  groups: readonly SummaryGroup[]
 }
 
-const x = (v: number) => logPos(v, AXIS_MIN, AXIS_MAX, PLOT_L, PLOT_R)
+/**
+ * Вартість посадки по групах на логарифмічній осі.
+ *
+ * Єдиної лінії еталона тут більше немає, і це вимушено: еталон рахується
+ * **на кожен слот окремо** (FR-005), а вікно зведення охоплює десятки слотів
+ * з різними еталонами. Одна вертикаль означала б, що еталон у вікні один, —
+ * твердження, якого дані не роблять. Замість неї кожен рядок має власну
+ * заливку від `медіана − медіанний надлишок` до медіани: це та сама величина,
+ * яку показує колонка «overpay», лише в масштабі осі.
+ */
+const CostCanvas = ({ groups }: CostCanvasProps) => {
+  const domain = costDomain(
+    groups.flatMap((group) =>
+      [group.costP10, group.costP50, group.costP90].filter((value): value is number =>
+        value !== null,
+      ),
+    ),
+  )
+  const x = (value: number) =>
+    logPos(Math.min(Math.max(value, domain.min), domain.max), domain.min, domain.max, PLOT_L, PLOT_R)
 
-const CostCanvas = ({ empty = false }: CostCanvasProps) => {
-  const rows = empty ? [] : GROUPS.filter((g) => g.enoughData && g.median !== null)
-  const plotBottom = AXIS_TOP + Math.max(rows.length, 3) * ROW_H
-  const H = plotBottom + 42
-  const refX = x(REFERENCE_LAMPORTS)
+  const plotBottom = AXIS_TOP + Math.max(groups.length, 3) * ROW_H
+  const H = plotBottom + 24
 
   return (
     <svg
@@ -26,138 +46,97 @@ const CostCanvas = ({ empty = false }: CostCanvasProps) => {
       role="img"
       aria-label="Cost per landing by delivery group on a logarithmic axis"
     >
-      {/* axis caption */}
       <text className="u-caps" x={PLOT_L} y={12} fontSize={9} fill="hsl(var(--ink-muted))">
         cost per landing — lamports — logarithmic axis
       </text>
 
-      {/* vertical grid at ticks */}
-      {COST_TICKS.map((t) => {
-        const isDecade = /^1/.test(String(t)) && t % 10_000 === 0
-        return (
-          <g key={t}>
-            <line
-              x1={x(t)}
-              y1={AXIS_TOP}
-              x2={x(t)}
-              y2={plotBottom}
-              stroke={isDecade ? 'hsl(var(--grid-major))' : 'hsl(var(--grid-minor))'}
-              strokeWidth={1}
-            />
-            <text
-              className="u-num"
-              x={x(t)}
-              y={AXIS_TOP - 8}
-              fontSize={9}
-              textAnchor="middle"
-              fill="hsl(var(--ink-muted))"
-            >
-              {tickLabel(t)}
-            </text>
-          </g>
-        )
-      })}
+      {domainTicks(domain).map((tick) => (
+        <g key={tick}>
+          <line
+            x1={x(tick)}
+            y1={AXIS_TOP}
+            x2={x(tick)}
+            y2={plotBottom}
+            stroke={tick === domain.min || tick === domain.max ? 'hsl(var(--grid-major))' : 'hsl(var(--grid-minor))'}
+            strokeWidth={1}
+          />
+          <text
+            className="u-num"
+            x={x(tick)}
+            y={AXIS_TOP - 8}
+            fontSize={9}
+            textAnchor="middle"
+            fill="hsl(var(--ink-muted))"
+          >
+            {tickLabel(tick)}
+          </text>
+        </g>
+      ))}
 
-      {/* axis rules */}
-      <line
-        x1={PLOT_L}
-        y1={AXIS_TOP}
-        x2={PLOT_R}
-        y2={AXIS_TOP}
-        stroke="hsl(var(--rule))"
-        strokeWidth={1}
-      />
-      <line
-        x1={PLOT_L}
-        y1={plotBottom}
-        x2={PLOT_R}
-        y2={plotBottom}
-        stroke="hsl(var(--rule))"
-        strokeWidth={1}
-      />
+      <line x1={PLOT_L} y1={AXIS_TOP} x2={PLOT_R} y2={AXIS_TOP} stroke="hsl(var(--rule))" />
+      <line x1={PLOT_L} y1={plotBottom} x2={PLOT_R} y2={plotBottom} stroke="hsl(var(--rule))" />
 
-      {/* reference rule */}
-      <line
-        x1={refX}
-        y1={AXIS_TOP - 2}
-        x2={refX}
-        y2={plotBottom + 12}
-        stroke="hsl(var(--ink))"
-        strokeWidth={1.25}
-      />
-      <text className="u-caps" x={refX + 5} y={plotBottom + 24} fontSize={9} fill="hsl(var(--ink))">
-        reference
-      </text>
-      <text
-        className="u-num"
-        x={refX + 5}
-        y={plotBottom + 36}
-        fontSize={9.5}
-        fill="hsl(var(--ink-muted))"
-      >
-        {fmtInt(REFERENCE_LAMPORTS)} lamports · p10 of the slot
-      </text>
-
-      {empty && (
+      {groups.length === 0 && (
         <text
           className="u-caps"
           x={(PLOT_L + PLOT_R) / 2}
-          y={AXIS_TOP + 3 * ROW_H * 0.5}
+          y={AXIS_TOP + 1.5 * ROW_H}
           fontSize={11}
           textAnchor="middle"
           fill="hsl(var(--ink-muted))"
         >
-          no samples in this window
+          no group has enough observations
         </text>
       )}
 
-      {rows.map((g, i) => {
-        const cy = AXIS_TOP + i * ROW_H + ROW_H / 2
-        const mx = x(g.median as number)
-        const outline = g.sendable === 'no'
-        const shadeL = Math.min(refX, mx)
-        const shadeW = Math.abs(mx - refX)
+      {groups.map((group, index) => {
+        const cy = AXIS_TOP + index * ROW_H + ROW_H / 2
+        const median = group.costP50
+        if (median === null) return null
+
+        const outline = !group.isSendable
+        const reference = group.overpayP50 === null ? null : median - group.overpayP50
+        const mx = x(median)
+        const rx = reference === null ? mx : x(reference)
+
         return (
-          <g key={g.id}>
-            {/* row separator */}
+          <g key={group.groupId}>
             <line
               x1={PLOT_L}
               y1={cy + ROW_H / 2}
               x2={PLOT_R}
               y2={cy + ROW_H / 2}
               stroke="hsl(var(--grid-minor))"
-              strokeWidth={1}
             />
 
-            {/* label */}
             <text
               className="u-label"
-              x={172}
-              y={cy + (g.members ? -1 : 3)}
+              x={LABEL_R}
+              y={cy + (group.members.length > 1 ? -1 : 3)}
               fontSize={14}
               fontWeight={600}
               textAnchor="end"
               fill="hsl(var(--ink))"
             >
-              {g.name}
+              {group.name}
             </text>
-            {g.members && (
+            {group.members.length > 1 && (
               <text
                 className="u-label"
-                x={172}
+                x={LABEL_R}
                 y={cy + 12}
                 fontSize={10.5}
                 textAnchor="end"
                 fill="hsl(var(--ink-muted))"
               >
-                {g.members.join(', ')}
+                {group.members.join(', ')}
               </text>
             )}
             {outline && (
               <text
                 className="u-caps"
-                x={172}
-                y={cy + 14}
+                x={LABEL_R}
+                y={cy + (group.members.length > 1 ? 24 : 16)}
                 fontSize={8.5}
                 textAnchor="end"
                 fill="hsl(var(--ink-muted))"
@@ -166,53 +145,50 @@ const CostCanvas = ({ empty = false }: CostCanvasProps) => {
               </text>
             )}
 
-            {/* overpay shading */}
-            <rect
-              x={shadeL}
-              y={cy - 8}
-              width={Math.max(shadeW, 0.5)}
-              height={16}
-              fill={outline ? 'none' : 'hsl(var(--overpay) / 0.16)'}
-              stroke="hsl(var(--overpay))"
-              strokeWidth={outline ? 1 : 0}
-              strokeDasharray={outline ? '3 2' : undefined}
-              strokeOpacity={0.7}
-            />
+            {/* надлишок: від імовірного еталона до медіани */}
+            {reference !== null && (
+              <rect
+                x={Math.min(rx, mx)}
+                y={cy - 8}
+                width={Math.max(Math.abs(mx - rx), 0.5)}
+                height={16}
+                fill={outline ? 'none' : 'hsl(var(--overpay) / 0.16)'}
+                stroke="hsl(var(--overpay))"
+                strokeWidth={outline ? 1 : 0}
+                strokeDasharray={outline ? '3 2' : undefined}
+                strokeOpacity={0.7}
+              />
+            )}
 
-            {/* p10 – p90 */}
-            {g.p10 !== null && g.p90 !== null && (
+            {group.costP10 !== null && group.costP90 !== null && (
               <>
                 <line
-                  x1={x(g.p10)}
+                  x1={x(group.costP10)}
                   y1={cy}
-                  x2={x(g.p90)}
+                  x2={x(group.costP90)}
                   y2={cy}
                   stroke="hsl(var(--ink))"
-                  strokeWidth={1}
                   strokeOpacity={outline ? 0.5 : 1}
                 />
                 <line
-                  x1={x(g.p10)}
+                  x1={x(group.costP10)}
                   y1={cy - 5}
-                  x2={x(g.p10)}
+                  x2={x(group.costP10)}
                   y2={cy + 5}
                   stroke="hsl(var(--ink))"
-                  strokeWidth={1}
                   strokeOpacity={outline ? 0.5 : 1}
                 />
                 <line
-                  x1={x(g.p90)}
+                  x1={x(group.costP90)}
                   y1={cy - 5}
-                  x2={x(g.p90)}
+                  x2={x(group.costP90)}
                   y2={cy + 5}
                   stroke="hsl(var(--ink))"
-                  strokeWidth={1}
                   strokeOpacity={outline ? 0.5 : 1}
                 />
               </>
             )}
 
-            {/* median */}
             <rect
               x={mx - 4.5}
               y={cy - 4.5}
@@ -220,52 +196,38 @@ const CostCanvas = ({ empty = false }: CostCanvasProps) => {
               height={9}
               fill={outline ? 'hsl(var(--paper))' : 'hsl(var(--ink))'}
               stroke="hsl(var(--ink))"
-              strokeWidth={1}
             />
 
-            {g.p10 === null && (
-              <text
-                className="u-caps"
-                x={mx + 9}
-                y={cy + 3}
-                fontSize={8.5}
-                fill="hsl(var(--ink-muted))"
-              >
-                median only
-              </text>
-            )}
-
-            {/* right-hand figures */}
             <text
               className="u-num"
-              x={866}
-              y={cy + 3}
+              x={FIGURE_R}
+              y={cy - 3}
               fontSize={12}
               textAnchor="end"
               fill="hsl(var(--ink))"
             >
-              {fmtInt(g.median as number)}
+              {fmtInt(median)}
             </text>
             <text
               className="u-num"
-              x={956}
-              y={cy + 3}
-              fontSize={11}
+              x={FIGURE_R}
+              y={cy + 11}
+              fontSize={10.5}
               textAnchor="end"
-              fill="hsl(var(--ink-muted))"
+              fill="hsl(var(--overpay))"
             >
-              {fmtUsdFromLamports(g.median as number)}
+              {group.overpayP50 === null ? 'no reference' : `+${fmtInt(group.overpayP50)}`}
             </text>
           </g>
         )
       })}
 
-      {!empty && (
+      {groups.length > 0 && (
         <>
           <text
             className="u-caps"
-            x={866}
-            y={AXIS_TOP - 8}
+            x={FIGURE_R}
+            y={AXIS_TOP - 18}
             fontSize={9}
             textAnchor="end"
             fill="hsl(var(--ink-muted))"
@@ -274,13 +236,13 @@ const CostCanvas = ({ empty = false }: CostCanvasProps) => {
           </text>
           <text
             className="u-caps"
-            x={956}
+            x={FIGURE_R}
             y={AXIS_TOP - 8}
             fontSize={9}
             textAnchor="end"
             fill="hsl(var(--ink-muted))"
           >
-            usd
+            overpay
           </text>
         </>
       )}

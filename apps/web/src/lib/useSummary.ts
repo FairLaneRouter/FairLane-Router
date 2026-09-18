@@ -1,5 +1,12 @@
 import { useEffect, useState } from 'react'
-import { fetchSummary, subscribeSummary, type Summary, type SummaryWindow } from './api'
+import {
+  fetchHistory,
+  fetchSummary,
+  subscribeSummary,
+  type History,
+  type Summary,
+  type SummaryWindow,
+} from './api'
 
 export type SummaryState =
   | { readonly status: 'loading' }
@@ -65,6 +72,47 @@ export function useSummary(window: SummaryWindow): SummaryState {
       unsubscribe()
     }
   }, [window])
+
+  return state
+}
+
+export type HistoryState =
+  | { readonly status: 'loading' }
+  | { readonly status: 'error'; readonly message: string }
+  | { readonly status: 'ready'; readonly history: History }
+
+/**
+ * Добова динаміка (FR-013). Читається один раз на відкриття і оновлюється
+ * разом зі зміною `revision` — тобто коли зведення принесло новий слот.
+ * Підписки тут немає навмисно: рядок агрегату зʼявляється раз на годину, і
+ * тримати відкрите зʼєднання заради події, якої годину не буде, немає за що.
+ */
+export function useHistory(hours: number, revision: number): HistoryState {
+  const [state, setState] = useState<HistoryState>({ status: 'loading' })
+
+  // `revision` навмисно не використовується всередині ефекту: це лічильник,
+  // сама зміна якого й означає «пора перечитати». Прибрати його з залежностей
+  // означає лишити графік на числах тієї години, в яку відкрили сторінку.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: лічильник перечитування, див. вище
+  useEffect(() => {
+    const controller = new AbortController()
+    let alive = true
+
+    fetchHistory(hours, { signal: controller.signal })
+      .then((history) => {
+        if (alive) setState({ status: 'ready', history })
+      })
+      .catch((cause: unknown) => {
+        if (alive && !controller.signal.aborted) {
+          setState({ status: 'error', message: describe(cause) })
+        }
+      })
+
+    return () => {
+      alive = false
+      controller.abort()
+    }
+  }, [hours, revision])
 
   return state
 }

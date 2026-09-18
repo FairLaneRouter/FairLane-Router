@@ -2,12 +2,14 @@ import type { ChannelGroup, Logger } from '@fairlane/shared'
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import { healthRoute, type HealthStore } from './routes/health.ts'
+import { historyRoute, type HistoryStore } from './routes/history.ts'
 import { createSummaryHub, streamRoute, type SummaryHub } from './routes/stream.ts'
 import { createSummaryProvider, summaryRoute, type SummaryStore } from './routes/summary.ts'
 
 export type AppOptions = {
   readonly summary: SummaryStore
   readonly health: HealthStore
+  readonly history: HistoryStore
   readonly groups: readonly ChannelGroup[]
   readonly staleAfterMs: number
   readonly logger: Logger
@@ -40,7 +42,7 @@ export type App = {
  * а не в відповідь.
  */
 export function createApp(options: AppOptions): App {
-  const { summary, health, groups, staleAfterMs, logger } = options
+  const { summary, health, history, groups, staleAfterMs, logger } = options
 
   const provider = createSummaryProvider({
     store: summary,
@@ -70,6 +72,7 @@ export function createApp(options: AppOptions): App {
    * дозвіл, і він видаватиметься окремо, разом із самими маршрутами.
    */
   app.use('/v1/summary', cors({ origin: '*' }))
+  app.use('/v1/history', cors({ origin: '*' }))
   app.use('/v1/summary/stream', cors({ origin: '*' }))
   app.use('/health', cors({ origin: '*' }))
 
@@ -81,6 +84,17 @@ export function createApp(options: AppOptions): App {
       hub,
       logger,
       ...(options.pingIntervalMs === undefined ? {} : { pingIntervalMs: options.pingIntervalMs }),
+    }),
+  )
+
+  app.route(
+    '/',
+    historyRoute({
+      store: history,
+      groups,
+      logger,
+      ...(options.cacheTtlMs === undefined ? {} : { cacheTtlMs: options.cacheTtlMs }),
+      ...(options.now === undefined ? {} : { now: options.now }),
     }),
   )
 

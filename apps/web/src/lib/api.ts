@@ -1,3 +1,4 @@
+import { historySchema, type History } from '@fairlane/shared/history'
 import { summarySchema, type Summary, type SummaryWindow } from '@fairlane/shared/summary'
 
 /**
@@ -9,7 +10,7 @@ import { summarySchema, type Summary, type SummaryWindow } from '@fairlane/share
  * місце, а не як помилка. Підшлях `@fairlane/shared/summary` бере рівно один
  * модуль: клієнт RPC, читання конфігу й логер у браузер не їдуть.
  */
-export type { Summary, SummaryWindow }
+export type { History, Summary, SummaryWindow }
 
 /**
  * Адреса API. У розробці — сусідній процес на 3000; на розгортанні задається
@@ -69,6 +70,35 @@ export async function fetchSummary(
   }
 
   return parseSummary(await response.json())
+}
+
+export function parseHistory(payload: unknown): History {
+  const parsed = historySchema.safeParse(payload)
+
+  if (!parsed.success) {
+    const detail = parsed.error.issues
+      .map((issue) => `${issue.path.join('.')}: ${issue.message}`)
+      .join('; ')
+    throw new ApiError(`Відповідь API не за контрактом — ${detail}`)
+  }
+
+  return parsed.data
+}
+
+/** Добова динаміка надлишку (FR-013). Стрічки тут немає навмисно: агрегати
+ *  змінюються раз на годину, і підписка чекала б на подію годинами. */
+export async function fetchHistory(
+  hours: number,
+  options: { readonly base?: string; readonly signal?: AbortSignal } = {},
+): Promise<History> {
+  const base = options.base ?? apiBase()
+  const response = await fetch(`${base}/v1/history?hours=${hours}`, {
+    ...(options.signal ? { signal: options.signal } : {}),
+  })
+
+  if (!response.ok) throw new ApiError(`API відповів ${response.status}`)
+
+  return parseHistory(await response.json())
 }
 
 export type SummaryStreamHandlers = {

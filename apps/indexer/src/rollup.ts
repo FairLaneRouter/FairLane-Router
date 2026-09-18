@@ -1,7 +1,5 @@
 import { groupHourly, type Database } from '@fairlane/db'
-import { sampleWeight, type Logger } from '@fairlane/shared'
-
-const HOUR_MS = 3_600_000
+import { HOUR_MS, sampleWeight, startOfHour, type Logger } from '@fairlane/shared'
 
 /**
  * Посадка в тому вигляді, в якому її бачить згортка. Полів рівно чотири:
@@ -22,7 +20,11 @@ export type HourlyLanding = {
 export type GroupHourlyRow = {
   readonly groupId: string
   readonly hour: Date
+  /** Зважена вибіркою оцінка обсягу. Мірою доказовості вона не є. */
   readonly landingsCount: number
+  /** Скільки рядків стоїть за агрегатом насправді — саме до цього числа
+   *  застосовується поріг «недостатньо даних» (FR-012). */
+  readonly observationsCount: number
   readonly costP10: bigint
   readonly costP50: bigint
   readonly costP90: bigint
@@ -35,11 +37,6 @@ export type RollupStore = {
   /** Посадки години за `block_time`: проміжок `[hour, hour + 1 год)`. */
   loadHour(hour: Date): Promise<readonly HourlyLanding[]>
   save(rows: readonly GroupHourlyRow[]): Promise<void>
-}
-
-/** Початок години за UTC. Сітка одна на всю систему — місцевого часу тут немає. */
-export function startOfHour(at: Date): Date {
-  return new Date(Math.floor(at.getTime() / HOUR_MS) * HOUR_MS)
 }
 
 /**
@@ -92,6 +89,7 @@ function byValue(a: WeightedSample, b: WeightedSample): number {
 
 type Bucket = {
   weight: number
+  rows: number
   readonly costs: WeightedSample[]
   readonly overpays: WeightedSample[]
 }
@@ -136,8 +134,9 @@ export function rollupHour(
       continue
     }
 
-    const bucket = buckets.get(landing.groupId) ?? { weight: 0, costs: [], overpays: [] }
+    const bucket = buckets.get(landing.groupId) ?? { weight: 0, rows: 0, costs: [], overpays: [] }
     bucket.weight += weight
+    bucket.rows += 1
     bucket.costs.push({ value: landing.totalCost, weight })
     if (landing.overpay !== null) bucket.overpays.push({ value: landing.overpay, weight })
     buckets.set(landing.groupId, bucket)
@@ -157,6 +156,7 @@ export function rollupHour(
         groupId,
         hour,
         landingsCount: bucket.weight,
+        observationsCount: bucket.rows,
         costP10: weightedPercentile(costs, 10),
         costP50: weightedPercentile(costs, 50),
         costP90: weightedPercentile(costs, 90),
@@ -198,6 +198,7 @@ export function createRollupStore(db: Database): RollupStore {
             target: [groupHourly.groupId, groupHourly.hour],
             set: {
               landingsCount: row.landingsCount,
+              observationsCount: row.observationsCount,
               costP10: row.costP10,
               costP50: row.costP50,
               costP90: row.costP90,

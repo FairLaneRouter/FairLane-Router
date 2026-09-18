@@ -15,6 +15,13 @@
       "when": 1787935768183,
       "tag": "0001_landings_block_time_idx",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1787941767768,
+      "tag": "0002_natural_iron_monger",
+      "breakpoints": true
     }
   ]
 }

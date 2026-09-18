@@ -67,6 +67,7 @@ function app(store: SummaryStore, cacheTtlMs = 0) {
   return createApp({
     summary: store,
     health: { read: () => Promise.reject(new Error('health у цих тестах не задіяний')) },
+    history: { read: () => Promise.reject(new Error('історія у цих тестах не задіяна')) },
     groups: registry.groups,
     staleAfterMs: staleAfterMs(100),
     logger: silent,

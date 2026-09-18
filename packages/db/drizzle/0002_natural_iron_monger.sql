@@ -1,0 +1,1 @@
+ALTER TABLE "group_hourly" ADD COLUMN "observations_count" integer DEFAULT 0 NOT NULL;

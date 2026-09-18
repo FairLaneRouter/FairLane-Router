@@ -2,9 +2,11 @@ import type { Summary, SummaryGroup } from '@fairlane/shared/summary'
 import { useState } from 'react'
 import CostCanvas from '@/components/CostCanvas'
 import Marker from '@/components/Marker'
+import OverpayChart from '@/components/OverpayChart'
 import { fmtAge, fmtInt, fmtLamports, fmtShare, WINDOW_LABELS } from '@/lib/format'
+import type { HistoryState } from '@/lib/useSummary'
 import type { SummaryWindow } from '@/lib/api'
-import { useSummary } from '@/lib/useSummary'
+import { useHistory, useSummary } from '@/lib/useSummary'
 
 const WINDOWS: { key: SummaryWindow; label: string }[] = [
   { key: '15m', label: '15 min' },
@@ -175,7 +177,15 @@ const Live = ({ summary, live }: { summary: Summary; live: boolean }) => (
   </div>
 )
 
-const Dashboard = ({ summary, live }: { summary: Summary; live: boolean }) => {
+const Dashboard = ({
+  summary,
+  live,
+  history,
+}: {
+  summary: Summary
+  live: boolean
+  history: HistoryState
+}) => {
   const best = cheapest(summary.groups)
   const measured = summary.groups.filter((group) => group.sufficientData)
   const withoutData = summary.groups.filter((group) => !group.sufficientData)
@@ -232,6 +242,36 @@ const Dashboard = ({ summary, live }: { summary: Summary; live: boolean }) => {
       </section>
 
       <section>
+        <div className="mb-2 flex flex-wrap items-baseline gap-x-3 gap-y-1">
+          <h2 className="u-caps text-[11px]">Overpay over the day</h2>
+          <span className="u-num text-[11px] text-[hsl(var(--ink-muted))]">
+            {history.status === 'ready'
+              ? `${fmtInt(history.history.coveredHours)} of ${fmtInt(history.history.hours)} hours have data`
+              : 'hourly aggregates'}
+          </span>
+        </div>
+
+        {history.status === 'loading' && (
+          <p className="u-label text-[12px] text-[hsl(var(--ink-muted))]">reading the aggregates…</p>
+        )}
+        {history.status === 'error' && (
+          <p className="u-label text-[12px] text-[hsl(var(--ink-muted))]">{history.message}.</p>
+        )}
+        {history.status === 'ready' && (
+          <>
+            <div className="overflow-x-auto">
+              <OverpayChart history={history.history} />
+            </div>
+            <p className="u-label mt-2 max-w-[70ch] text-[12px] text-[hsl(var(--ink-muted))]">
+              One point per completed hour. A missing hour breaks the line instead of being drawn
+              through: a segment across a gap would look exactly like a measured one. The history is
+              as long as collection has been running, and the count above says how long that is.
+            </p>
+          </>
+        )}
+      </section>
+
+      <section>
         <div className="mb-2 flex items-baseline gap-3">
           <h2 className="u-caps text-[11px]">Groups</h2>
         </div>
@@ -282,9 +322,19 @@ const Dashboard = ({ summary, live }: { summary: Summary; live: boolean }) => {
   )
 }
 
+const HOUR_MS = 3_600_000
+
 const Board = () => {
   const [window, setWindow] = useState<SummaryWindow>('1h')
   const state = useSummary(window)
+
+  // Годинний агрегат зʼявляється рівно раз на годину, тож перечитувати
+  // історію на кожну подію стрічки (раз на сорок секунд) немає за чим.
+  const hourOfData =
+    state.status === 'ready' && state.summary.lastBlockTime !== null
+      ? Math.floor(Date.parse(state.summary.lastBlockTime) / HOUR_MS)
+      : 0
+  const history = useHistory(24, hourOfData)
 
   return (
     <div className="space-y-9">
@@ -306,7 +356,9 @@ const Board = () => {
         </div>
       )}
 
-      {state.status === 'ready' && <Dashboard summary={state.summary} live={state.live} />}
+      {state.status === 'ready' && (
+        <Dashboard summary={state.summary} live={state.live} history={history} />
+      )}
     </div>
   )
 }

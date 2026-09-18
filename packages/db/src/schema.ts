@@ -130,6 +130,14 @@ export const groupHourly = pgTable(
       .references(() => channelGroups.id),
     hour: timestamp('hour', { withTimezone: true }).notNull(),
     landingsCount: integer('landings_count').notNull(),
+    /**
+     * Скільки рядків стоїть за агрегатом насправді. `landings_count` зважений
+     * вибіркою і є оцінкою обсягу, а не мірою доказовості: для групи `rpc` він
+     * у двадцять разів більший за кількість спостережень. Без цієї колонки
+     * читач агрегату не може застосувати поріг «недостатньо даних» (FR-012) і
+     * малює лінію по одному спостереженню (T034).
+     */
+    observationsCount: integer('observations_count').notNull().default(0),
     costP10: lamports('cost_p10').notNull(),
     costP50: lamports('cost_p50').notNull(),
     costP90: lamports('cost_p90').notNull(),

@@ -1,10 +1,9 @@
-import { createLogger } from '@fairlane/shared'
+import { createLogger, startOfHour } from '@fairlane/shared'
 import { describe, expect, it } from 'vitest'
 import {
   completeHours,
   rollupHour,
   runRollup,
-  startOfHour,
   type GroupHourlyRow,
   type HourlyLanding,
   type RollupStore,

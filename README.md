@@ -33,8 +33,10 @@ landing cost than the cheapest successful landings in the *same* slot.
 
 ## How the numbers are computed
 
-Every number on the dashboard follows from four definitions. The *Method*
-page will carry the same text once it moves off synthetic data (T035 → T066).
+Every number on the dashboard follows from four definitions. Only
+*successful, non-vote* transactions count as landings: a failed transaction
+did not land, and a vote pays nothing for delivery. The *Method* page will
+carry the same text once it moves off synthetic data.
 
 - **Landing cost** of a transaction, in lamports, as a `bigint`:
   base fee (5 000 per signature) + priority fee (`meta.fee` above base) + tips.
@@ -52,7 +54,9 @@ page will carry the same text once it moves off synthetic data (T035 → T066).
   guess the brand inside a group. A transaction paying a known tip account is
   attributed to that group; one with a priority fee and no tip is *plain RPC*;
   anything else is *unattributed* and shown as a separate share rather than
-  folded into any group.
+  folded into any group. A transaction that tips two different groups at once
+  is also unattributed — picking the larger tip would be a guess, and the
+  spec demands zero false attributions rather than a plausible one.
 
 Two more rules shape what you see:
 
@@ -65,9 +69,11 @@ Two more rules shape what you see:
   marks such groups “observed only — cannot route through”.
 
 Data is sampled: the indexer reads every 100th slot in full (`getBlock`) and
-stores every landing that paid a tip plus a 5 % sample of plain-RPC landings.
-Counts and shares are reweighted accordingly; percentiles are not, because
-weights are uniform within a group.
+stores every landing that paid a tip plus a 5 % sample of everything else
+(plain RPC and unattributed). Counts and shares are reweighted accordingly;
+percentiles are not, because weights are uniform within a group. The slot
+reference is computed over *all* non-vote transactions of the slot before
+sampling, so it measures the slot, not what was kept.
 
 ## Architecture
 

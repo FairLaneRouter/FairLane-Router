@@ -1,0 +1,65 @@
+# Дашборд на GitHub Pages. Збирається на кожен push у main і публікується
+# через Actions — окремої гілки gh-pages немає. Власник один раз вмикає
+# Settings → Pages → Source = GitHub Actions; без цього крок deploy падає з 404.
+#
+# Змінні збірки — Settings → Secrets and variables → Actions → Variables:
+#   VITE_API_URL     публічна адреса API (вшивається в бандл, секретом не є)
+#   PAGES_BASE_PATH  лише для власного домену: "/" замість "/<репо>/"
+name: pages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - apps/web/**
+      - packages/shared/**
+      - pnpm-lock.yaml
+      - .github/workflows/pages.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # Порожня адреса API означала б «той самий домен» — на Pages це 404 на
+      # кожен запит і сторінка «no data». Краще впасти на збірці, з поясненням.
+      - run: |
+          if [ -z "${{ vars.VITE_API_URL }}" ]; then
+            echo "::error::Змінна репозиторію VITE_API_URL не задана (Settings → Secrets and variables → Actions → Variables)"
+            exit 1
+          fi
+      - run: pnpm --filter @fairlane/web build
+        env:
+          BASE_PATH: ${{ vars.PAGES_BASE_PATH || format('/{0}/', github.event.repository.name) }}
+          VITE_API_URL: ${{ vars.VITE_API_URL }}
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: apps/web/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

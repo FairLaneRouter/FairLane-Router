@@ -159,9 +159,13 @@ read from `DEMO_WALLET_SECRET` and used in one module.
   its config as code in `apps/indexer/railway.json` and `apps/api/railway.json`
   (start from the repo root, no build, one replica — two indexers would write
   the same slots twice). `.nvmrc` pins Node 24.
-- **Web → Vercel**, `vercel.json` at the root: `pnpm --filter @fairlane/web
-  build`, output `apps/web/dist`, immutable cache for hashed assets. Set
-  `VITE_API_URL` to the API's public URL in the project settings.
+- **Web → GitHub Pages**, built and published by
+  `.github/workflows/pages.yml` on every push to `main` that touches the web
+  app. One-time setup: *Settings → Pages → Source: GitHub Actions*, and the
+  repository variable `VITE_API_URL` (*Settings → Secrets and variables →
+  Actions → Variables*) pointing at the API's public URL — the build fails
+  loudly without it. The site lives under `/<repository-name>/`; for a custom
+  domain set the variable `PAGES_BASE_PATH` to `/`.
 
 ## Success criteria and how they are measured
 

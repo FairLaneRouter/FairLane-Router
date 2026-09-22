@@ -1,0 +1,39 @@
+# Blueprint для Render: один web-сервіс на безкоштовному тарифі, у якому API
+# і індексатор живуть одним процесом (`RUN_INDEXER=true`) — фонових процесів
+# free-план не дає. Синхронізується з `main` при push.
+#
+# Секрети (`sync: false`) вводяться в панелі Render при створенні сервісу.
+# Node 26 — та сама мажорна, що й локально; збірки немає, Node виконує
+# TypeScript напряму. pnpm ставиться через npx: corepack на образі Node 26
+# падає з EROFS, а з Node 25 його взагалі не постачають.
+#
+# Free-сервіс засинає після 15 хв без HTTP і прокидається ~хвилину — для
+# індексатора це прогалина, яку дочитування закриє, але посадки того часу
+# у зведенні з'являться із запізненням. Keep-alive — `.github/workflows/keepalive.yml`.
+services:
+  - type: web
+    name: fairlane-api
+    runtime: node
+    plan: free
+    region: frankfurt
+    buildCommand: npx -y pnpm@9.15.0 install --frozen-lockfile
+    startCommand: node apps/api/src/index.ts
+    healthCheckPath: /health
+    autoDeployTrigger: commit
+    envVars:
+      - key: NODE_VERSION
+        value: "26"
+      - key: RUN_INDEXER
+        value: "true"
+      - key: LOG_LEVEL
+        value: info
+      - key: SAMPLE_EVERY_N
+        value: "100"
+      - key: RPC_SAMPLE_RATE
+        value: "0.05"
+      - key: SOLANA_RPC_URL
+        sync: false
+      - key: SOLANA_RPC_FALLBACK_URL
+        sync: false
+      - key: DATABASE_URL
+        sync: false

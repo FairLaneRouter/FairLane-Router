@@ -136,7 +136,7 @@ scripts/
 ## Running locally
 
 Requirements: Node ≥ 24.2 (entry points rely on `import.meta.main` and Node's
-native TypeScript execution), pnpm 9, a Postgres database (Supabase free tier
+native TypeScript execution; production runs Node 26), pnpm 9, a Postgres database (Supabase free tier
 is enough), an HTTPS Solana RPC endpoint.
 
 ```bash
@@ -161,10 +161,14 @@ read from `DEMO_WALLET_SECRET` and used in one module.
 
 ## Deployment
 
-- **Indexer and API → Railway**, two services from this repository. Each has
-  its config as code in `apps/indexer/railway.json` and `apps/api/railway.json`
-  (start from the repo root, no build, one replica — two indexers would write
-  the same slots twice). `.nvmrc` pins Node 24.
+- **Indexer and API → Render**, one free web service described by
+  `render.yaml` (Blueprint). The free plan has no background workers, so the
+  indexer runs inside the API process (`RUN_INDEXER=true`) on the shared
+  database pool; locally the two stay separate processes. Secrets
+  (`SOLANA_RPC_URL`, `DATABASE_URL`) are entered in the Render dashboard.
+  A free service sleeps after 15 minutes without HTTP traffic, so
+  `.github/workflows/keepalive.yml` pings `/health` every 5 minutes; a
+  cold start still costs about a minute, which the gap healer later fills.
 - **Web → GitHub Pages**, built and published by
   `.github/workflows/pages.yml` on every push to `main` that touches the web
   app. One-time setup: *Settings → Pages → Source: GitHub Actions*, and the

@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest'
-import { ApiError, apiBase, parseSummary, summaryUrl } from './api'
+import { afterEach, describe, expect, it } from 'vitest'
+import { ApiError, apiBase, parseSummary, summaryUrl, takePreloadedSummary } from './api'
 import { fmtAge, fmtLamports, fmtShare } from './format'
 
 const payload = {
@@ -58,6 +58,45 @@ describe('summaryUrl', () => {
       'https://api.example.dev/v1/summary?window=15m',
     )
     expect(summaryUrl('', '24h', true)).toBe('/v1/summary/stream?window=24h')
+  })
+})
+
+describe('takePreloadedSummary', () => {
+  const holder = globalThis as { __fairlanePreload?: unknown }
+
+  afterEach(() => {
+    delete holder.__fairlanePreload
+  })
+
+  const preload = (window: string, at: number) => {
+    holder.__fairlanePreload = { window, at, summary: Promise.resolve(payload) }
+  }
+
+  it('returns the response ordered in the document and only once', async () => {
+    preload('1h', 1000)
+
+    await expect(takePreloadedSummary('1h', 1200)).resolves.toMatchObject({ window: '1h' })
+    expect(takePreloadedSummary('1h', 1200)).toBeNull()
+  })
+
+  // Передзамовлення завжди на годину: показати його там, де вибрано інше
+  // вікно, означало б підмінити числа під тією ж підписом.
+  it('refuses a response ordered for another window', () => {
+    preload('1h', 1000)
+
+    expect(takePreloadedSummary('15m', 1200)).toBeNull()
+  })
+
+  it('refuses a response older than the freshness limit', () => {
+    preload('1h', 1000)
+
+    expect(takePreloadedSummary('1h', 1000 + 30_001)).toBeNull()
+  })
+
+  // Сторінка без передзамовлення — звичайний випадок: розробка, застарілий
+  // HTML у кеші, прямий перехід на інший маршрут.
+  it('says nothing was ordered when the holder is empty', () => {
+    expect(takePreloadedSummary('1h')).toBeNull()
   })
 })
 

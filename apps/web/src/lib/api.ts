@@ -56,10 +56,52 @@ export function parseSummary(payload: unknown): Summary {
   return parsed.data
 }
 
+/**
+ * Відповідь, замовлена ще в `index.html` (див. коментар там). Вона одноразова
+ * і придатна лише для того вікна, яке замовляли, — інакше сторінка показала б
+ * «останню годину» там, де вибрано п'ятнадцять хвилин.
+ *
+ * Вік обмежений навмисно: сторінка, відкрита у фоновій вкладці і показана за
+ * півгодини, не має починати з півгодинних чисел. Прострочену обіцянку просто
+ * викидаємо й читаємо наново.
+ */
+const PRELOAD_MAX_AGE_MS = 30_000
+
+type Preload = {
+  readonly window: SummaryWindow
+  readonly at: number
+  readonly summary: Promise<unknown>
+}
+
+export function takePreloadedSummary(
+  window: SummaryWindow,
+  now: number = Date.now(),
+): Promise<unknown> | null {
+  const holder = globalThis as { __fairlanePreload?: Preload }
+  const preload = holder.__fairlanePreload
+
+  // Одноразова: після першого читання її немає ні для кого, і повторний показ
+  // того самого вікна піде звичайним шляхом.
+  delete holder.__fairlanePreload
+
+  if (!preload || preload.window !== window) return null
+  if (now - preload.at > PRELOAD_MAX_AGE_MS) return null
+
+  return preload.summary
+}
+
 export async function fetchSummary(
   window: SummaryWindow,
-  options: { readonly base?: string; readonly signal?: AbortSignal } = {},
+  options: {
+    readonly base?: string
+    readonly signal?: AbortSignal
+    /** Перекривається тільки в тестах. */
+    readonly preloaded?: Promise<unknown> | null
+  } = {},
 ): Promise<Summary> {
+  const preloaded = options.preloaded ?? takePreloadedSummary(window)
+  if (preloaded) return parseSummary(await preloaded)
+
   const base = options.base ?? apiBase()
   const response = await fetch(summaryUrl(base, window), {
     ...(options.signal ? { signal: options.signal } : {}),

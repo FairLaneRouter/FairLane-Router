@@ -3,12 +3,59 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+    <!--
+      Запит до API стартує звідси, а не з React, і це найдорожчий важіль
+      першого екрана. До цього ланцюг був послідовним: HTML → стилі → бандл
+      (86 КБ) → виконання → лише тоді fetch. На 3G перший запит ішов на
+      1.7 секунді, і сторінка бачила дані аж на 2.5-й. Тут він іде першим
+      рядком документа, паралельно з усім іншим.
+
+      Адреса вшивається на збірці: Vite підставляє `%VITE_API_URL%` у HTML
+      так само, як `import.meta.env` у код. Порожнє значення означає той
+      самий домен — тоді `base` порожній і шлях лишається відносним.
+
+      Обіцянка зберігається з уже приглушеною відмовою: бандл прийде за
+      секунду й повісить власний обробник, а браузер устиг би до того часу
+      оголосити її «unhandled» і написати помилку в консоль.
+    -->
+    <script>
+      ;(() => {
+        const base = '%VITE_API_URL%'.replace(/\/+$/, '')
+        const at = Date.now()
+        const summary = fetch(`${base}/v1/summary?window=1h`).then((response) => {
+          if (!response.ok) throw new Error(`API відповів ${response.status}`)
+          return response.json()
+        })
+
+        summary.catch(() => {})
+        window.__fairlanePreload = { window: '1h', at, summary }
+      })()
+    </script>
+
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+
+    <!--
+      Шрифти не блокують показ. Стилі з чужого домену затримували CSSOM на
+      1.2 с, а разом із ним і виконання модуля — скрипти чекають на стилі.
+      `media="print"` знімає їх із критичного шляху, `onload` вмикає назад.
+      Ціна — коротка мить системним шрифтом; вона дешевша за таблицю, якої
+      ще немає.
+    -->
     <link
       href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap"
       rel="stylesheet"
+      media="print"
+      onload="this.media='all'"
     />
+    <noscript>
+      <link
+        href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap"
+        rel="stylesheet"
+      />
+    </noscript>
+
     <title>FairLane Router — landing cost board</title>
   </head>
   <body>

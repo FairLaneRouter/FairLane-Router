@@ -26,6 +26,12 @@ const envSchema = z.object({
   RPC_SAMPLE_RATE: numeric(z.number().min(0).max(1).default(0.05)),
 
   PORT: numeric(z.number().int().min(1).max(65535).default(3000)),
+  // Індексатор усередині процесу API. Потрібен лише там, де фонового процесу
+  // немає (Render Free); у двопроцесному запуску лишається вимкненим.
+  RUN_INDEXER: z.preprocess(
+    blankToUndefined,
+    z.enum(['true', 'false']).default('false'),
+  ),
   LOG_LEVEL: z.preprocess(
     blankToUndefined,
     z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
@@ -48,6 +54,7 @@ export type Config = {
   readonly sampleEveryN: number
   readonly rpcSampleRate: number
   readonly port: number
+  readonly runIndexer: boolean
   readonly logLevel: 'fatal' | 'error' | 'warn' | 'info' | 'debug' | 'trace'
   readonly rateLimitWithKeyPerMin: number
   readonly rateLimitNoKeyPerMin: number
@@ -101,6 +108,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     sampleEveryN: e.SAMPLE_EVERY_N,
     rpcSampleRate: e.RPC_SAMPLE_RATE,
     port: e.PORT,
+    runIndexer: e.RUN_INDEXER === 'true',
     logLevel: e.LOG_LEVEL,
     rateLimitWithKeyPerMin: e.RATE_LIMIT_WITH_KEY_PER_MIN,
     rateLimitNoKeyPerMin: e.RATE_LIMIT_NO_KEY_PER_MIN,

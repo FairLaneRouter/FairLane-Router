@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@fairlane/db": "workspace:^",
+    "@fairlane/indexer": "workspace:^",
     "@fairlane/shared": "workspace:^",
     "@hono/node-server": "^1.19.9",
     "drizzle-orm": "^0.45.2",

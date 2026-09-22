@@ -26,6 +26,9 @@ importers:
       '@fairlane/db':
         specifier: workspace:^
         version: link:../../packages/db
+      '@fairlane/indexer':
+        specifier: workspace:^
+        version: link:../indexer
       '@fairlane/shared':
         specifier: workspace:^
         version: link:../../packages/shared

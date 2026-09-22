@@ -1,5 +1,6 @@
 import { serve } from '@hono/node-server'
 import { createDatabase } from '@fairlane/db'
+import { runIndexer } from '@fairlane/indexer/run'
 import {
   buildChannelRegistry,
   createLogger,
@@ -20,6 +21,14 @@ import { createSummaryStore } from './routes/summary.ts'
  * відправлятиме (M3), тож його `isSendable` у зведенні означає «цей процес
  * справді має куди надіслати», а не «сервіс колись обіцяв приймати» (FR-040,
  * FR-041).
+ *
+ * `RUN_INDEXER=true` піднімає збір **у цьому ж процесі**, на спільному пулі.
+ * Це не архітектурне рішення, а поступка хостингу: на безкоштовному тарифі
+ * Render фонових процесів немає, є один web-сервіс. Розділення лишається
+ * типовим запуском — індексатор має власну точку входу, і API без прапорця
+ * про нього не знає. Падіння збору API не валить: `/health` покаже
+ * відставання, а платформа перезапустить процес за healthcheck лише тоді,
+ * коли впаде сам HTTP.
  */
 async function main(): Promise<void> {
   const config = loadConfig()
@@ -36,15 +45,33 @@ async function main(): Promise<void> {
     logger,
   })
 
+  const indexer = new AbortController()
+
+  if (config.runIndexer) {
+    runIndexer({
+      config,
+      logger: createLogger({ level: config.logLevel, context: { app: 'indexer' } }),
+      db,
+      signal: indexer.signal,
+    }).then(
+      () => logger.info('збір усередині API зупинено'),
+      (cause: unknown) => logger.error('збір усередині API впав', { err: cause }),
+    )
+  }
+
   const server = serve({ fetch: app.fetch, port: config.port }, (info) => {
     logger.info('API слухає', {
       port: info.port,
       sendableGroups: registry.sendableGroups.map((group) => group.id),
+      indexerInProcess: config.runIndexer,
     })
   })
 
+  // Спершу збір, потім HTTP, потім пул: слот, який саме пишеться, має
+  // дописатись до того, як з'єднання з базою закриються.
   const stop = (signal: string) => {
     logger.info('зупинка на сигналі', { signal })
+    indexer.abort()
     stopWatching()
     server.close(() => {
       void close().then(() => logger.info('API зупинено'))

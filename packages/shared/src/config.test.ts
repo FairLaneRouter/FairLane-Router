@@ -34,6 +34,13 @@ describe('loadConfig', () => {
     expect(config.port).toBe(8080)
   })
 
+  it('keeps the in-process indexer off unless asked for literally', () => {
+    expect(loadConfig(valid).runIndexer).toBe(false)
+    expect(loadConfig({ ...valid, RUN_INDEXER: '' }).runIndexer).toBe(false)
+    expect(loadConfig({ ...valid, RUN_INDEXER: 'true' }).runIndexer).toBe(true)
+    expect(() => loadConfig({ ...valid, RUN_INDEXER: '1' })).toThrow(/RUN_INDEXER/)
+  })
+
   it('rejects a sampling stride below one', () => {
     expect(() => loadConfig({ ...valid, SAMPLE_EVERY_N: '0' })).toThrow(/SAMPLE_EVERY_N/)
   })

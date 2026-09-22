@@ -1,5 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { BlockNotAvailableError, createRpcClient, RpcError, SlotSkippedError } from './rpc.ts'
+import {
+  BlockNotAvailableError,
+  createRpcClient,
+  MAX_SUPPORTED_TX_VERSION,
+  RpcError,
+  SlotSkippedError,
+} from './rpc.ts'
 
 const block = {
   blockhash: 'Fh1s9…',
@@ -61,8 +67,29 @@ describe('createRpcClient', () => {
     expect(body.params[1]).toMatchObject({
       transactionDetails: 'full',
       rewards: false,
-      maxSupportedTransactionVersion: 0,
+      maxSupportedTransactionVersion: MAX_SUPPORTED_TX_VERSION,
     })
+  })
+
+  // Пін нижчий за версії в мережі зупиняє збір цілком, і сире повідомлення
+  // вузла звучить як проблема мережі. Помилка має називати константу.
+  it('names the version ceiling when the node refuses the block', async () => {
+    const fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        jsonrpc: '2.0',
+        id: 1,
+        error: {
+          code: -32015,
+          message:
+            'Transaction version (9) is not supported by the requesting client. Please try the request again with the following configuration parameter: "maxSupportedTransactionVersion": 9',
+        },
+      }),
+    })
+    const rpc = createRpcClient({ url: 'https://rpc.example', fetch })
+
+    await expect(rpc.getBlock(341882103)).rejects.toThrow(/MAX_SUPPORTED_TX_VERSION/)
   })
 
   // Пропущений слот — штатний стан ланцюга, не збій. Плутати їх означає

@@ -8,6 +8,23 @@ const SLOT_SKIPPED_CODES = new Set([-32007, -32009])
  * вузол уже віддає в `getBlock`. Плутати з пропущеним слотом не можна, бо
  * рішення протилежні: пропущений слот дочитувати марно, цей — обов'язково.
  */
+/**
+ * Найвища версія транзакції, яку клієнт погоджується розбирати. Не прикраса:
+ * вузол **відмовляє цілому блоку**, щойно в ньому трапиться транзакція
+ * новішої версії, тож занизьке число зупиняє збір повністю — і виглядає це
+ * як недоступний RPC, а не як налаштування. Саме так і сталось: пін `0`
+ * пережив появу v1 у mainnet, і кожен слот вибірки падав з `-32015`.
+ *
+ * Підняття межі безпечне для розбору: форма `transaction.message` у v1 та
+ * сама, ключі акаунтів на місці (перевірено на живому блоці — 56 транзакцій
+ * v1 із 1200, жодної невідповідності схемі). Ми не інтерпретуємо семантику
+ * версій — нам потрібні комісії, баланси й ключі, а вони спільні.
+ */
+export const MAX_SUPPORTED_TX_VERSION = 1
+
+/** Вузол відмовив блоку через версію транзакції — межу вище треба піднімати. */
+const UNSUPPORTED_VERSION_PATTERN = /not supported by the requesting client/i
+
 const BLOCK_NOT_AVAILABLE_CODE = -32004
 
 export class RpcError extends Error {
@@ -164,6 +181,17 @@ export function createRpcClient(options: RpcClientOptions): RpcClient {
         if (slot !== undefined && error.code === BLOCK_NOT_AVAILABLE_CODE) {
           throw new BlockNotAvailableError(slot, error.code)
         }
+        // Повідомлення вузла тут переписується навмисно: сире «not supported
+        // by the requesting client» читається як проблема мережі, тоді як це
+        // наша константа, і полагодити її можна одним числом.
+        if (UNSUPPORTED_VERSION_PATTERN.test(error.message)) {
+          throw new RpcError(
+            `${method}: вузол віддає транзакції новіші за MAX_SUPPORTED_TX_VERSION=${MAX_SUPPORTED_TX_VERSION} — ` +
+              `підніміть константу в packages/shared/src/rpc.ts (вузол каже: ${error.message})`,
+            error.code,
+          )
+        }
+
         throw new RpcError(`${method}: ${error.message}`, error.code)
       }
 
@@ -191,7 +219,7 @@ export function createRpcClient(options: RpcClientOptions): RpcClient {
             transactionDetails: 'full',
             rewards: false,
             commitment: 'confirmed',
-            maxSupportedTransactionVersion: 0,
+            maxSupportedTransactionVersion: MAX_SUPPORTED_TX_VERSION,
           },
         ],
         slot,

@@ -124,7 +124,7 @@ function blockParams(slot: number, details: 'full' | 'accounts') {
       transactionDetails: details,
       rewards: false,
       commitment: 'confirmed',
-      maxSupportedTransactionVersion: 0,
+      maxSupportedTransactionVersion: 1,
     },
   ]
 }

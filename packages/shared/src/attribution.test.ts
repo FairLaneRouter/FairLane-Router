@@ -12,13 +12,13 @@ const registry = buildChannelRegistry({
   groups: [
     { id: 'jito', name: 'Jito' },
     { id: 'nozomi', name: 'Nozomi' },
-    { id: RPC_GROUP_ID, name: 'Звичайний RPC' },
+    { id: RPC_GROUP_ID, name: 'Plain RPC' },
   ],
   channels: [
     { id: 'jito', groupId: 'jito', name: 'Jito', tipAccounts: [JITO_ACCOUNT] },
     { id: 'jito-relay', groupId: 'jito', name: 'Jito Relay', tipAccounts: [JITO_ACCOUNT_2] },
     { id: 'nozomi', groupId: 'nozomi', name: 'Nozomi', tipAccounts: [NOZOMI_ACCOUNT] },
-    { id: 'rpc', groupId: RPC_GROUP_ID, name: 'Звичайний RPC' },
+    { id: 'rpc', groupId: RPC_GROUP_ID, name: 'Plain RPC' },
   ],
 })
 

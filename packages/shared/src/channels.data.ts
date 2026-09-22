@@ -20,7 +20,9 @@ export const DEFAULT_REGISTRY: RegistryDefinition = {
     { id: 'jito', name: 'Jito' },
     { id: 'nozomi', name: 'Nozomi' },
     { id: 'bloxroute', name: 'bloXroute' },
-    { id: 'rpc', name: 'Звичайний RPC' },
+    // Назви груп — те, що читає людина на публічному дашборді, і він
+    // англійською. Українською тут лишаються коментарі, не дані.
+    { id: 'rpc', name: 'Plain RPC' },
   ],
   channels: [
     {
@@ -101,7 +103,7 @@ export const DEFAULT_REGISTRY: RegistryDefinition = {
     {
       id: 'rpc',
       groupId: 'rpc',
-      name: 'Звичайний RPC',
+      name: 'Plain RPC',
       tipAccounts: [],
       isObserved: true,
       isSendable: true,

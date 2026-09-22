@@ -18,8 +18,8 @@ const payload = {
   groups: [
     {
       groupId: 'rpc',
-      name: 'Звичайний RPC',
-      members: ['Звичайний RPC'],
+      name: 'Plain RPC',
+      members: ['Plain RPC'],
       observations: 381,
       overpayObservations: 381,
       landings: 7620,

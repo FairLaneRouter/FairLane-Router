@@ -20,7 +20,7 @@ const registry = buildChannelRegistry({
   groups: [
     { id: 'jito', name: 'Jito' },
     { id: 'nozomi', name: 'Nozomi' },
-    { id: 'rpc', name: 'Звичайний RPC' },
+    { id: 'rpc', name: 'Plain RPC' },
   ],
   channels: [
     {
@@ -45,7 +45,7 @@ const registry = buildChannelRegistry({
       isSendable: true,
       endpointEnvKey: 'CHANNEL_NOZOMI_ENDPOINT',
     },
-    { id: 'rpc', groupId: 'rpc', name: 'Звичайний RPC' },
+    { id: 'rpc', groupId: 'rpc', name: 'Plain RPC' },
   ],
   // Ендпоінт лише в Jito: Nozomi лишається каналом спостереження (FR-041).
 }, { jito: 'https://jito.example' })

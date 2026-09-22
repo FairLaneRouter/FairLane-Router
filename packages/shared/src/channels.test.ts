@@ -15,7 +15,7 @@ function definition(overrides: Partial<Parameters<typeof buildChannelRegistry>[0
   return {
     groups: [
       { id: 'jito', name: 'Jito' },
-      { id: 'rpc', name: 'Звичайний RPC' },
+      { id: 'rpc', name: 'Plain RPC' },
     ],
     channels: [
       {
@@ -26,7 +26,7 @@ function definition(overrides: Partial<Parameters<typeof buildChannelRegistry>[0
         isSendable: true,
         endpointEnvKey: 'CHANNEL_JITO_ENDPOINT',
       },
-      { id: 'rpc', groupId: 'rpc', name: 'Звичайний RPC', isSendable: true },
+      { id: 'rpc', groupId: 'rpc', name: 'Plain RPC', isSendable: true },
     ],
     ...overrides,
   }
@@ -218,7 +218,7 @@ describe('sendability', () => {
     expect(registry.groupById('jito')?.canSend).toBe(false)
   })
 
-  // Звичайний RPC відправляється через базовий вузол, власного ендпоінта
+  // Plain RPC відправляється через базовий вузол, власного ендпоінта
   // в нього немає й не буде.
   it('treats a channel without an endpoint variable as sendable on the base node', () => {
     const registry = buildChannelRegistry(definition())

@@ -172,9 +172,13 @@ read from `DEMO_WALLET_SECRET` and used in one module.
   indexer runs inside the API process (`RUN_INDEXER=true`) on the shared
   database pool; locally the two stay separate processes. Secrets
   (`SOLANA_RPC_URL`, `DATABASE_URL`) are entered in the Render dashboard.
-  A free service sleeps after 15 minutes without HTTP traffic, so
-  `.github/workflows/keepalive.yml` pings `/health` every 5 minutes; a
-  cold start still costs about a minute, which the gap healer later fills.
+  A free service sleeps after 15 minutes without HTTP traffic, so an external
+  uptime monitor (UptimeRobot, free tier) requests `/health` every 5 minutes.
+  A GitHub Actions schedule was tried first and does not work for this: a
+  `*/5` cron actually fired 12 times in two and a half days — once every three
+  to five hours — and the service spent most of its life asleep. The symptom
+  was not a missing ping but a data one: every wake-up opened an indexer gap
+  covering the whole sleep, and `/health` reported `degraded` for days.
 - **Web → GitHub Pages**, built and published by
   `.github/workflows/pages.yml` on every push to `main` that touches the web
   app. One-time setup: *Settings → Pages → Source: GitHub Actions*, and the

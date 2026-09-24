@@ -294,6 +294,10 @@ function streamApp(store: SummaryStore) {
     summary: store,
     health: { read: () => Promise.reject(new Error('health у цих тестах не задіяний')) },
     history: { read: () => Promise.reject(new Error('історія у цих тестах не задіяна')) },
+    keys: {
+      issue: () => Promise.reject(new Error('видача ключів у цих тестах не задіяна')),
+      recordUsage: () => Promise.reject(new Error('лічильники у цих тестах не задіяні')),
+    },
     groups: registry.groups,
     staleAfterMs: staleAfterMs(100),
     logger: silent,

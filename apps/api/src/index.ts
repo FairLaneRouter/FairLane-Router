@@ -11,6 +11,7 @@ import {
 import { createApp } from './app.ts'
 import { createHealthStore } from './routes/health.ts'
 import { createHistoryStore } from './routes/history.ts'
+import { createKeyStore } from './routes/keys.ts'
 import { createSummaryStore } from './routes/summary.ts'
 
 /**
@@ -40,6 +41,7 @@ async function main(): Promise<void> {
     summary: createSummaryStore(db, { rpcSampleRate: config.rpcSampleRate }),
     health: createHealthStore(db),
     history: createHistoryStore(db),
+    keys: createKeyStore(db),
     groups: registry.groups,
     staleAfterMs: staleAfterMs(config.sampleEveryN),
     logger,

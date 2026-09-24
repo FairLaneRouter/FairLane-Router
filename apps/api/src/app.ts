@@ -3,6 +3,7 @@ import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import { healthRoute, type HealthStore } from './routes/health.ts'
 import { historyRoute, type HistoryStore } from './routes/history.ts'
+import { keysRoute, type KeyStore } from './routes/keys.ts'
 import { createSummaryHub, streamRoute, type SummaryHub } from './routes/stream.ts'
 import { createSummaryProvider, summaryRoute, type SummaryStore } from './routes/summary.ts'
 
@@ -10,6 +11,7 @@ export type AppOptions = {
   readonly summary: SummaryStore
   readonly health: HealthStore
   readonly history: HistoryStore
+  readonly keys: KeyStore
   readonly groups: readonly ChannelGroup[]
   readonly staleAfterMs: number
   readonly logger: Logger
@@ -42,7 +44,7 @@ export type App = {
  * а не в відповідь.
  */
 export function createApp(options: AppOptions): App {
-  const { summary, health, history, groups, staleAfterMs, logger } = options
+  const { summary, health, history, keys, groups, staleAfterMs, logger } = options
 
   const provider = createSummaryProvider({
     store: summary,
@@ -97,6 +99,15 @@ export function createApp(options: AppOptions): App {
       ...(options.now === undefined ? {} : { now: options.now }),
     }),
   )
+
+  /**
+   * Видача ключа CORS не отримує навмисно, і це не забутий рядок. Ключ — це
+   * секрет інтегратора, а не дані дашборда: його беруть із терміналу або зі
+   * свого сервера. Дозвіл чужому домену кликати цей маршрут з браузера
+   * користувача означав би сторінку, яка мовчки намолочує ключі від його
+   * імені, і жодного нашого сценарію він не відкриває.
+   */
+  app.route('/', keysRoute({ store: keys, logger }))
 
   app.route(
     '/',

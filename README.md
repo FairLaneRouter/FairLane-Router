@@ -10,6 +10,12 @@ views still show synthetic data and are labelled as such on screen.
 Recommendations, the SDK and paired comparisons are later milestones (see
 [Roadmap](#roadmap)).
 
+**Live:** dashboard — <https://fairlanerouter.github.io/FairLane-Router/> ·
+API — <https://fairlane-api.onrender.com> (`/health`, `/v1/summary`,
+`/v1/history`, `/v1/summary/stream`). The API runs on a free plan and sleeps
+after 15 minutes without traffic, so the first request after a quiet spell can
+take about a minute.
+
 ## Why
 
 Signing a transaction is not enough to get it into a block — it has to be
@@ -210,3 +216,7 @@ that is not met is recorded as not met, not removed.
 | **M2** — recommendation | `POST /v1/recommend`, self-service access keys with counters, `packages/sdk` in advisory mode |
 | **M3** — proof side by side | send mode in the SDK, project demo wallet with a daily budget, paired comparison, split-screen view |
 | **M4** — memory | per-address report on two data tiers, daily and monthly overpay dynamics |
+
+## License
+
+MIT — see [LICENSE](LICENSE).

@@ -256,7 +256,7 @@ const windowQuerySchema = summaryWindowSchema.default(DEFAULT_SUMMARY_WINDOW)
 export const INVALID_WINDOW = {
   error: {
     code: 'INVALID_INPUT',
-    message: 'Невідоме вікно зведення',
+    message: 'Unknown summary window',
     details: { window: summaryWindowSchema.options },
   },
 } as const

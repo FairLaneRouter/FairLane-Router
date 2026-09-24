@@ -75,7 +75,7 @@ export function createKeyStore(db: Database): KeyStore {
 export const INVALID_LABEL = {
   error: {
     code: 'INVALID_INPUT',
-    message: 'Позначка ключа має бути рядком від 1 до 64 символів',
+    message: 'The key label must be a string of 1 to 64 characters',
     details: { field: 'label' },
   },
 } as const

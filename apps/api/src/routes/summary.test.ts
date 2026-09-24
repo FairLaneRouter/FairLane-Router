@@ -107,7 +107,7 @@ describe('GET /v1/summary', () => {
     expect(await response.json()).toEqual({
       error: {
         code: 'INVALID_INPUT',
-        message: 'Невідоме вікно зведення',
+        message: 'Unknown summary window',
         details: { window: ['15m', '1h', '24h'] },
       },
     })

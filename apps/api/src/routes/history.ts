@@ -65,8 +65,8 @@ export function createHistoryStore(db: Database): HistoryStore {
 export const INVALID_HOURS = {
   error: {
     code: 'INVALID_INPUT',
-    message: 'Некоректна глибина історії',
-    details: { hours: `ціле від 1 до ${MAX_HISTORY_HOURS}` },
+    message: 'Invalid history depth',
+    details: { hours: `an integer from 1 to ${MAX_HISTORY_HOURS}` },
   },
 } as const
 

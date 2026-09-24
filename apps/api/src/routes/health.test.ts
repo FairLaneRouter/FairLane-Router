@@ -43,14 +43,14 @@ describe('assessIndexer', () => {
     const report = assess({ lastBlockTime: new Date(NOW.getTime() - STALE_AFTER - 1) })
 
     expect(report.status).toBe('degraded')
-    expect(report.issues).toContain('збір відстає від ланцюга')
+    expect(report.issues).toContain('collection is behind the chain')
   })
 
   it('degrades on an empty store instead of reporting a lag of nothing', () => {
     const report = assess({ lastSlot: null, lastBlockTime: null, lastWriteAt: null })
 
     expect(report).toMatchObject({ status: 'degraded', lagMs: null, lagSlots: null })
-    expect(report.issues).toContain('жодної посадки у сховищі')
+    expect(report.issues).toContain('no landings in storage')
   })
 
   // Розрив від перезапуску відкривається щоразу і закривається наступним
@@ -69,7 +69,7 @@ describe('assessIndexer', () => {
     })
 
     expect(report.status).toBe('degraded')
-    expect(report.issues).toContain('прогалина не закривається два проходи поспіль')
+    expect(report.issues).toContain('a gap has stayed open for two maintenance passes')
   })
 
   it('reports every fault at once, not just the first', () => {

@@ -120,13 +120,13 @@ export function createApp(options: AppOptions): App {
   )
 
   app.notFound((c) =>
-    c.json({ error: { code: 'NOT_FOUND', message: 'Такого маршруту немає', details: {} } }, 404),
+    c.json({ error: { code: 'NOT_FOUND', message: 'No such route', details: {} } }, 404),
   )
 
   app.onError((cause, c) => {
     logger.error('запит не оброблено', { err: cause, path: c.req.path })
 
-    return c.json({ error: { code: 'INTERNAL', message: 'Внутрішня помилка', details: {} } }, 500)
+    return c.json({ error: { code: 'INTERNAL', message: 'Internal error', details: {} } }, 500)
   })
 
   return { app, close: () => hub.close() }

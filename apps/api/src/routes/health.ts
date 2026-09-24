@@ -119,11 +119,11 @@ export function assessIndexer(options: AssessOptions): HealthReport {
 
   const issues: string[] = []
 
-  if (state.lastSlot === null) issues.push('жодної посадки у сховищі')
-  else if (lagMs !== null && lagMs > staleAfterMs) issues.push('збір відстає від ланцюга')
+  if (state.lastSlot === null) issues.push('no landings in storage')
+  else if (lagMs !== null && lagMs > staleAfterMs) issues.push('collection is behind the chain')
 
   if (gapAgeMs !== null && gapAgeMs > gapStuckAfterMs) {
-    issues.push('прогалина не закривається два проходи поспіль')
+    issues.push('a gap has stayed open for two maintenance passes')
   }
 
   return {

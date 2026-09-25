@@ -1,6 +1,7 @@
 import type { ChannelGroup, Logger } from '@fairlane/shared'
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
+import { rateLimit } from './middleware/rateLimit.ts'
 import { healthRoute, type HealthStore } from './routes/health.ts'
 import { historyRoute, type HistoryStore } from './routes/history.ts'
 import { keysRoute, type KeyStore } from './routes/keys.ts'
@@ -14,6 +15,8 @@ export type AppOptions = {
   readonly keys: KeyStore
   readonly groups: readonly ChannelGroup[]
   readonly staleAfterMs: number
+  readonly rateLimitWithKeyPerMin: number
+  readonly rateLimitNoKeyPerMin: number
   readonly logger: Logger
   readonly cacheTtlMs?: number
   /** Як часто стрічка питає сховище про зміни. Перекривається в тестах. */
@@ -77,6 +80,25 @@ export function createApp(options: AppOptions): App {
   app.use('/v1/history', cors({ origin: '*' }))
   app.use('/v1/summary/stream', cors({ origin: '*' }))
   app.use('/health', cors({ origin: '*' }))
+
+  /**
+   * The limiter is mounted on **everything** and frees the public paths itself
+   * (`UNLIMITED_PATHS`, FR-049). The opposite order — hanging it on one route
+   * at a time — would mean a forgotten line leaves a route unlimited, and a
+   * forgotten line is invisible.
+   *
+   * After CORS rather than before: a preflight `OPTIONS` should be answered by
+   * CORS and spend nobody's allowance.
+   */
+  app.use(
+    '*',
+    rateLimit({
+      store: keys,
+      logger,
+      withKeyPerMin: options.rateLimitWithKeyPerMin,
+      noKeyPerMin: options.rateLimitNoKeyPerMin,
+    }),
+  )
 
   app.route('/', summaryRoute({ provider, logger }))
   app.route(

@@ -105,6 +105,24 @@ function settle(turns = 6): Promise<void> {
   })
 }
 
+/**
+ * Waits for a condition rather than for a stretch of time.
+ *
+ * The route sends the first event **before** it subscribes to the hub, so
+ * "the first event arrived" says nothing about whether polling has begun.
+ * Whether one had already happened by the time the other was observed used to
+ * depend on the interleaving of microtasks, and a middleware added in front of
+ * the route was enough to flip it.
+ */
+async function until(condition: () => boolean, what: string): Promise<void> {
+  const deadline = Date.now() + 2_000
+
+  while (!condition()) {
+    if (Date.now() > deadline) throw new Error(`не сталося: ${what}`)
+    await new Promise((resolve) => setTimeout(resolve, 5))
+  }
+}
+
 describe('createSummaryHub', () => {
   it('does not touch the store while nobody is listening', async () => {
     let polls = 0
@@ -298,9 +316,12 @@ function streamApp(store: SummaryStore) {
       issue: () => Promise.reject(new Error('видача ключів у цих тестах не задіяна')),
       recordUsage: () => Promise.reject(new Error('лічильники у цих тестах не задіяні')),
       revoke: () => Promise.reject(new Error('відкликання ключів у цих тестах не задіяне')),
+      findByHash: () => Promise.reject(new Error('пошук ключів у цих тестах не задіяний')),
     },
     groups: registry.groups,
     staleAfterMs: staleAfterMs(100),
+    rateLimitWithKeyPerMin: 120,
+    rateLimitNoKeyPerMin: 10,
     logger: silent,
     cacheTtlMs: 0,
     watchIntervalMs: 5,
@@ -329,6 +350,7 @@ describe('GET /v1/summary/stream', () => {
     const client = await connect(app, '/v1/summary/stream')
 
     await client.waitFor(1)
+    await until(() => store.polls > 0, 'вузол зняв перший відлік')
     store.advance()
     await client.waitFor(2)
 
@@ -391,6 +413,7 @@ describe('GET /v1/summary/stream', () => {
     const client = await connect(app, '/v1/summary/stream')
 
     await client.waitFor(1)
+    await until(() => store.polls > 0, 'вузол почав опитувати сховище')
     expect(store.polls).toBeGreaterThan(0)
 
     client.close()

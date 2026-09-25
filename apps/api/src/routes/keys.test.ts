@@ -76,6 +76,11 @@ function fakeStore(clock: () => Date = () => REVOKED_AT): FakeStore {
 
       return Promise.resolve()
     },
+    findByHash: (keyHash) => {
+      const row = rows.find((it) => it.keyHash === keyHash)
+
+      return Promise.resolve(row === undefined ? undefined : { id: row.id, revokedAt: row.revokedAt })
+    },
     revoke: (input) => {
       revoked.push(input)
 

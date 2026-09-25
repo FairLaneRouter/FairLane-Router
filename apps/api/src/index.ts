@@ -44,6 +44,8 @@ async function main(): Promise<void> {
     keys: createKeyStore(db),
     groups: registry.groups,
     staleAfterMs: staleAfterMs(config.sampleEveryN),
+    rateLimitWithKeyPerMin: config.rateLimitWithKeyPerMin,
+    rateLimitNoKeyPerMin: config.rateLimitNoKeyPerMin,
     logger,
   })
 

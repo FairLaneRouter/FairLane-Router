@@ -40,7 +40,17 @@ export type KeyStore = {
   recordUsage(keyId: string, at: Date): Promise<void>
   /** Switches a key off, keeping its counters (FR-048). `undefined` — no such pair. */
   revoke(input: RevokeInput): Promise<RevokedRecord | undefined>
+  /**
+   * The key behind a token, for the rate limiter (FR-021). `revokedAt` comes
+   * back rather than being filtered out here: whether a revoked key is refused
+   * depends on the route, and a store that answered `undefined` for it would
+   * make that decision on the route's behalf, silently.
+   */
+  findByHash(keyHash: string): Promise<KeyIdentity | undefined>
 }
+
+/** What the rate limiter needs to know about a key, and nothing more. */
+export type KeyIdentity = { readonly id: string; readonly revokedAt: Date | null }
 
 /**
  * The statement of revocation, exported for one reason: a test reads its SQL
@@ -122,6 +132,21 @@ export function createKeyStore(db: Database): KeyStore {
       if (revokedAt === null) throw new Error('база відкликала ключ без часу відкликання')
 
       return { id: row.id, createdAt: row.createdAt, label: row.label, revokedAt }
+    },
+
+    async findByHash(keyHash) {
+      // The lookup is by the unique index on `key_hash`, and it happens on
+      // every keyed request rather than through a cache. A cache would have to
+      // expire, and until it did, a revoked key would keep being served — the
+      // one thing FR-048 promises it will not do. If SC-004 ever runs out of
+      // room, this is the lever, and the price of pulling it is written here.
+      const rows = await db
+        .select({ id: apiKeys.id, revokedAt: apiKeys.revokedAt })
+        .from(apiKeys)
+        .where(eq(apiKeys.keyHash, keyHash))
+        .limit(1)
+
+      return rows[0]
     },
   }
 }

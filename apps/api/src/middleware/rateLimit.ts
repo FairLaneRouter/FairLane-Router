@@ -194,28 +194,74 @@ export type RateLimitOptions = {
 }
 
 /**
+ * An entry of `x-forwarded-for` without the port, and without the brackets an
+ * IPv6 address wears when it carries one. A proxy that writes `ip:port` there
+ * would otherwise hand the same caller a new bucket per connection.
+ */
+function withoutPort(hop: string): string {
+  const bracketed = /^\[(.+)](?::\d+)?$/.exec(hop)
+  if (bracketed?.[1] !== undefined) return bracketed[1]
+
+  // A bare IPv6 address has several colons and no port; only strip one.
+  const parts = hop.split(':')
+
+  return parts.length === 2 && parts[1] !== undefined && /^\d+$/.test(parts[1])
+    ? (parts[0] ?? hop)
+    : hop
+}
+
+/**
+ * Addresses that cannot belong to a caller from the internet: loopback,
+ * the private ranges of RFC 1918, link-local, carrier-grade NAT, and the IPv6
+ * equivalents. Our own infrastructure lives there; a caller does not.
+ */
+const INTERNAL = [
+  /^127\./,
+  /^10\./,
+  /^192\.168\./,
+  /^172\.(1[6-9]|2\d|3[01])\./,
+  /^169\.254\./,
+  /^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./,
+  /^::1$/,
+  /^f[cd][0-9a-f]{2}:/i,
+  /^fe[89ab][0-9a-f]:/i,
+]
+
+const isInternal = (hop: string) => INTERNAL.some((range) => range.test(hop))
+
+/**
  * The source address, for callers who have no key.
  *
- * Behind Render there is exactly one proxy, and it **appends** the address it
- * sees to `x-forwarded-for`. So the trustworthy entry is the last one: a
- * caller who sends a header of their own only pushes their own address
- * further along it. Reading the first entry instead would hand every caller a
- * fresh allowance for every value they care to invent.
+ * The rule is **the last entry that could belong to somebody on the
+ * internet**, and both halves of it are load-bearing.
+ *
+ * *Last*, because a proxy appends the address of the peer it received the
+ * connection from. Whatever a caller writes into the header themselves stays
+ * to the left of what our own edge appends, so no invented value can become
+ * the one we count by — while reading the first entry would hand every caller
+ * a fresh allowance for every value they care to invent.
+ *
+ * *Could belong to somebody*, because measurement on Render showed the chain
+ * does not end at the caller: a single client, one stable address, was given
+ * **three** buckets instead of one — its quota tripled, and, far worse, it
+ * would have shared those buckets with every other caller that arrived
+ * through the same internal hop. The hops our platform adds after the caller
+ * are its own, and its own addresses are not routable from outside.
+ *
+ * If nothing in the chain looks routable the last entry is used anyway: that
+ * is the local and single-proxy case, where it is the right answer.
  */
 export function addressFromHeaders(c: Context): string {
-  const forwarded = c.req.header('x-forwarded-for')
+  const hops = (c.req.header('x-forwarded-for') ?? '')
+    .split(',')
+    .map((hop) => withoutPort(hop.trim()))
+    .filter((hop) => hop.length > 0)
 
-  if (forwarded !== undefined) {
-    const hops = forwarded
-      .split(',')
-      .map((hop) => hop.trim())
-      .filter((hop) => hop.length > 0)
-    const last = hops.at(-1)
+  if (hops.length === 0) return 'unknown'
 
-    if (last !== undefined) return last
-  }
+  const routable = hops.filter((hop) => !isInternal(hop))
 
-  return 'unknown'
+  return routable.at(-1) ?? hops.at(-1) ?? 'unknown'
 }
 
 /**

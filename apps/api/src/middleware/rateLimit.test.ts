@@ -110,6 +110,40 @@ describe('addressFromHeaders', () => {
   })
 
   it.each([
+    ['one internal hop after the caller', '203.0.113.7, 10.0.4.9'],
+    ['two of them', '203.0.113.7, 10.0.4.9, 172.20.1.3'],
+    ['a rotating one — the three buckets measured on Render', '203.0.113.7, 10.201.7.44'],
+    ['loopback', '203.0.113.7, 127.0.0.1'],
+    ['carrier-grade NAT', '203.0.113.7, 100.64.3.9'],
+    ['link-local', '203.0.113.7, 169.254.8.1'],
+    ['an IPv6 unique-local hop', '203.0.113.7, fd00::1'],
+  ])('ignores %s', (_case, value) => {
+    expect(addressFromHeaders(headers(value))).toBe('203.0.113.7')
+  })
+
+  it('still cannot be fooled by a forged entry when internal hops follow', () => {
+    // The forgery sits to the left of what our own edge appended.
+    expect(addressFromHeaders(headers('1.2.3.4, 203.0.113.7, 10.0.4.9'))).toBe('203.0.113.7')
+    expect(addressFromHeaders(headers('1.2.3.4, 5.6.7.8, 203.0.113.7, 10.0.4.9'))).toBe(
+      '203.0.113.7',
+    )
+  })
+
+  it('drops the port a proxy may append to the address', () => {
+    expect(addressFromHeaders(headers('203.0.113.7:54321, 10.0.4.9'))).toBe('203.0.113.7')
+    expect(addressFromHeaders(headers('[2001:db8::5]:443, 10.0.4.9'))).toBe('2001:db8::5')
+  })
+
+  it('keeps a bare IPv6 address whole', () => {
+    expect(addressFromHeaders(headers('2001:db8::5, 10.0.4.9'))).toBe('2001:db8::5')
+  })
+
+  it('uses the last hop when nothing in the chain is routable', () => {
+    // The local and single-proxy case, where the last hop is the right answer.
+    expect(addressFromHeaders(headers('10.0.4.9, 127.0.0.1'))).toBe('127.0.0.1')
+  })
+
+  it.each([
     ['no header', undefined],
     ['an empty header', ''],
     ['a header of commas', ' , , '],

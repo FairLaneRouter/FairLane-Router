@@ -297,6 +297,7 @@ function streamApp(store: SummaryStore) {
     keys: {
       issue: () => Promise.reject(new Error('видача ключів у цих тестах не задіяна')),
       recordUsage: () => Promise.reject(new Error('лічильники у цих тестах не задіяні')),
+      revoke: () => Promise.reject(new Error('відкликання ключів у цих тестах не задіяне')),
     },
     groups: registry.groups,
     staleAfterMs: staleAfterMs(100),

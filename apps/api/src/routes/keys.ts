@@ -3,13 +3,16 @@ import {
   generateKeyToken,
   hashKeyToken,
   issueKeyRequestSchema,
+  readBearerToken,
   startOfHour,
   type IssuedKey,
   type Logger,
   type RandomBytes,
+  type RevokedKey,
 } from '@fairlane/shared'
-import { sql } from 'drizzle-orm'
+import { and, eq, sql } from 'drizzle-orm'
 import { Hono } from 'hono'
+import { z } from 'zod'
 
 /** Рядок `api_keys` у тому вигляді, у якому його бачить маршрут. Хеша тут немає. */
 export type KeyRecord = {
@@ -18,11 +21,49 @@ export type KeyRecord = {
   readonly label: string | null
 }
 
+/** A key that has been switched off. `revokedAt` is never null here. */
+export type RevokedRecord = KeyRecord & { readonly revokedAt: Date }
+
+/**
+ * Both halves of the proof of ownership. The id names the key, the hash proves
+ * the caller holds its token, and the database checks the pair in one
+ * statement — there is nothing to compare in the process, so there is no
+ * window in which the pair could be checked against one row and applied to
+ * another.
+ */
+export type RevokeInput = { readonly id: string; readonly keyHash: string }
+
 export type KeyStore = {
   /** Записує **хеш** і повертає видані ідентифікатори. Токен сюди не доходить. */
   issue(input: { readonly keyHash: string; readonly label: string | null }): Promise<KeyRecord>
   /** +1 до лічильника звернень ключа за годину (FR-046). */
   recordUsage(keyId: string, at: Date): Promise<void>
+  /** Switches a key off, keeping its counters (FR-048). `undefined` — no such pair. */
+  revoke(input: RevokeInput): Promise<RevokedRecord | undefined>
+}
+
+/**
+ * The statement of revocation, exported for one reason: a test reads its SQL
+ * and asserts that it names `api_keys` and never `key_usage`. FR-048 keeps the
+ * counters of a revoked key until the aggregates expire on their own, and that
+ * promise lives entirely in the text of this statement — there is no local
+ * Postgres on the build machine to catch a `delete` that creeps in later.
+ *
+ * `coalesce(revoked_at, now())` is what makes the call idempotent without a
+ * preceding read: the first call stamps the time, every repeat keeps the
+ * stamp, and two simultaneous calls cannot disagree about which one won.
+ */
+export function revokeStatement(db: Database, input: RevokeInput) {
+  return db
+    .update(apiKeys)
+    .set({ revokedAt: sql`coalesce(${apiKeys.revokedAt}, now())` })
+    .where(and(eq(apiKeys.id, input.id), eq(apiKeys.keyHash, input.keyHash)))
+    .returning({
+      id: apiKeys.id,
+      createdAt: apiKeys.createdAt,
+      label: apiKeys.label,
+      revokedAt: apiKeys.revokedAt,
+    })
 }
 
 /**
@@ -68,6 +109,20 @@ export function createKeyStore(db: Database): KeyStore {
           set: { requests: sql`${keyUsage.requests} + 1` },
         })
     },
+
+    async revoke(input) {
+      const rows = await revokeStatement(db, input)
+      const row = rows[0]
+      if (row === undefined) return undefined
+
+      // The column is nullable in the schema, and the statement above is the
+      // reason it cannot be null here; the guard is for the day somebody
+      // rewrites the statement without `coalesce`.
+      const { revokedAt } = row
+      if (revokedAt === null) throw new Error('база відкликала ключ без часу відкликання')
+
+      return { id: row.id, createdAt: row.createdAt, label: row.label, revokedAt }
+    },
   }
 }
 
@@ -78,6 +133,26 @@ export const INVALID_LABEL = {
     message: 'The key label must be a string of 1 to 64 characters',
     details: { field: 'label' },
   },
+} as const
+
+/** The refusal when no key was presented — or what was presented is not one. */
+export const MISSING_KEY = {
+  error: {
+    code: 'UNAUTHENTICATED',
+    message: 'Present the key itself: Authorization: Bearer <key>',
+    details: {},
+  },
+} as const
+
+/**
+ * The refusal when the pair of key and id opens nothing.
+ *
+ * One body for three different reasons — no such key, somebody else's key, the
+ * wrong id — and that is deliberate: distinct answers would turn the route
+ * into an oracle that tells, by status code alone, which tokens exist.
+ */
+export const NO_SUCH_KEY = {
+  error: { code: 'NOT_FOUND', message: 'No such key', details: {} },
 } as const
 
 export type KeysRouteOptions = {
@@ -137,6 +212,67 @@ export function keysRoute(options: KeysRouteOptions): Hono {
     c.header('Cache-Control', 'no-store')
 
     return c.json(issued, 201)
+  })
+
+  /**
+   * `DELETE /v1/keys/:id` — the owner switches their own key off (FR-048).
+   *
+   * There are no accounts in the product, so there is no session to check and
+   * nobody to ask. The proof of ownership is the key itself: the caller sends
+   * it in `Authorization: Bearer <key>`, and the id in the path must be the id
+   * of that very key. Either half alone would be wrong in a different way —
+   * the id alone lets a stranger switch off a key they merely saw in a log,
+   * the token alone makes `DELETE /v1/keys/<anything>` quietly revoke whatever
+   * the caller happens to hold.
+   *
+   * The counters stay (FR-048): revocation writes one column of `api_keys`,
+   * and `key_usage` is not named in the statement at all. Billing an
+   * integrator for the hours they did use must not depend on their not having
+   * pressed this button.
+   *
+   * Nothing here refuses an already revoked key. A revoked token no longer
+   * **serves** requests — that guard belongs to T040, on the reading path —
+   * but it still **names** its own row, for good: the hash does not change,
+   * and if it stopped identifying the key, a repeated `DELETE` would answer
+   * 401 and the caller could never learn that the first one worked.
+   */
+  app.delete('/v1/keys/:id', async (c) => {
+    const token = readBearerToken(c.req.header('authorization'))
+
+    if (token === undefined) {
+      // The scheme goes back on a 401, as a client is entitled to expect;
+      // no realm, because there is nothing here to log into.
+      c.header('WWW-Authenticate', 'Bearer')
+
+      return c.json(MISSING_KEY, 401)
+    }
+
+    // An id that is not a UUID cannot name a key of ours, and saying so with
+    // 400 would only mean the same thing in a second voice. It is also what
+    // keeps a malformed path out of the database: `uuid = 'x'` is an error
+    // there, not an empty result, and it would surface as 500.
+    const id = z.uuid().safeParse(c.req.param('id'))
+    if (!id.success) return c.json(NO_SUCH_KEY, 404)
+
+    const record = await store.revoke({ id: id.data, keyHash: await hashKeyToken(token) })
+    if (record === undefined) return c.json(NO_SUCH_KEY, 404)
+
+    // The id and nothing else: the token reached this line, and a log line is
+    // read by more people than the database is.
+    logger.info('key revoked', { id: record.id })
+
+    const revoked: RevokedKey = {
+      id: record.id,
+      createdAt: record.createdAt.toISOString(),
+      revokedAt: record.revokedAt.toISOString(),
+      label: record.label,
+    }
+
+    // The answer carries no secret, but the request did, and a shared cache
+    // keyed without the header would hand this body to the next caller.
+    c.header('Cache-Control', 'no-store')
+
+    return c.json(revoked, 200)
   })
 
   return app

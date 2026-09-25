@@ -9,6 +9,8 @@ import {
   KEY_TOKEN_LENGTH,
   keyLabelSchema,
   keyTokenSchema,
+  readBearerToken,
+  revokedKeySchema,
 } from './keys.ts'
 
 /** Байти, які легко впізнати в токені очима: 00 01 02 … 1f. */
@@ -139,5 +141,67 @@ describe('issuedKeySchema', () => {
     expect(
       issuedKeySchema.safeParse({ ...issued, key: 'c229007e38529366cb1ead999ed618db' }).success,
     ).toBe(false)
+  })
+})
+
+describe('readBearerToken', () => {
+  const token = generateKeyToken(counting)
+
+  it('reads the token out of a well-formed header', () => {
+    expect(readBearerToken(`Bearer ${token}`)).toBe(token)
+  })
+
+  it.each(['bearer', 'BEARER', 'BeArEr'])('accepts the scheme spelled %s', (scheme) => {
+    expect(readBearerToken(`${scheme} ${token}`)).toBe(token)
+  })
+
+  it.each([
+    ['several spaces after the scheme', `Bearer    ${token}`],
+    ['a tab after the scheme', `Bearer\t${token}`],
+    ['trailing spaces', `Bearer ${token}  `],
+  ])('tolerates %s', (_case, header) => {
+    expect(readBearerToken(header)).toBe(token)
+  })
+
+  it.each([
+    ['no header at all', undefined],
+    ['a header Hono did not find', null],
+    ['an empty header', ''],
+    ['the token without the scheme', token],
+    ['another scheme', `Basic ${token}`],
+    ['a scheme glued to the token', `Bearer${token}`],
+    ['the scheme alone', 'Bearer'],
+    ['the scheme with nothing after it', 'Bearer '],
+    ['two tokens', `Bearer ${token} ${token}`],
+    ['a token without the prefix', `Bearer ${token.slice(KEY_PREFIX.length)}`],
+    ['a token in upper case', `Bearer ${token.toUpperCase()}`],
+    ['a token one character short', `Bearer ${token.slice(0, -1)}`],
+    ['a hash in place of a token', 'Bearer c229007e38529366cb1ead999ed618db'],
+  ])('returns nothing for %s', (_case, header) => {
+    expect(readBearerToken(header)).toBeUndefined()
+  })
+})
+
+describe('revokedKeySchema', () => {
+  const revoked = {
+    id: '6f1c0d2e-9a3b-4c5d-8e7f-0a1b2c3d4e5f',
+    createdAt: '2026-09-24T12:00:00.000Z',
+    revokedAt: '2026-09-25T09:30:00.000Z',
+    label: 'стенд',
+  }
+
+  it('accepts a revocation with a label and one without', () => {
+    expect(revokedKeySchema.parse(revoked)).toEqual(revoked)
+    expect(revokedKeySchema.parse({ ...revoked, label: null }).label).toBeNull()
+  })
+
+  it('demands the time of revocation', () => {
+    expect(revokedKeySchema.safeParse({ ...revoked, revokedAt: null }).success).toBe(false)
+  })
+
+  it('carries no token: an extra key field is dropped, not returned', () => {
+    const parsed = revokedKeySchema.parse({ ...revoked, key: generateKeyToken(counting) })
+
+    expect(Object.hasOwn(parsed, 'key')).toBe(false)
   })
 })

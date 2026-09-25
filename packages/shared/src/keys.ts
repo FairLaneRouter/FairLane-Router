@@ -102,3 +102,42 @@ export const issuedKeySchema = z.object({
 })
 
 export type IssuedKey = z.infer<typeof issuedKeySchema>
+
+/**
+ * The scheme of the `Authorization` header, read leniently and matched
+ * case-insensitively: RFC 7235 declares the scheme name case-insensitive, and
+ * a client that sends `bearer` is not making a mistake worth a 401.
+ *
+ * The token itself is matched strictly against `keyTokenSchema`, so this
+ * function answers one question — "did the caller present something shaped
+ * like a key of ours?" — and never "is that key real". The second question
+ * has an answer only in the database.
+ */
+const bearerPattern = /^bearer[ \t]+(\S+)[ \t]*$/i
+
+export function readBearerToken(header: string | null | undefined): string | undefined {
+  const match = bearerPattern.exec(header ?? '')
+  const token = match?.[1]
+  if (token === undefined) return undefined
+
+  const parsed = keyTokenSchema.safeParse(token)
+
+  return parsed.success ? parsed.data : undefined
+}
+
+/**
+ * The answer to a revocation (FR-048).
+ *
+ * There is no `key` field, and that is the point: the token is not reprinted
+ * on the way out, not even the one the caller has just sent. What the owner
+ * gets instead is `revokedAt` — the only evidence that the key is off, and on
+ * a repeated call the **original** timestamp rather than a fresh one.
+ */
+export const revokedKeySchema = z.object({
+  id: z.uuid(),
+  createdAt: z.iso.datetime(),
+  revokedAt: z.iso.datetime(),
+  label: keyLabelSchema.nullable(),
+})
+
+export type RevokedKey = z.infer<typeof revokedKeySchema>

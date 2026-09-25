@@ -101,46 +101,53 @@ describe('addressFromHeaders', () => {
       // biome-ignore lint/suspicious/noExplicitAny: a context stub of two fields
     }) as any
 
-  it('takes the hop the proxy appended, not the one the caller wrote', () => {
-    expect(addressFromHeaders(headers('9.9.9.9, 203.0.113.7'))).toBe('203.0.113.7')
+  /** What Render's chain looks like: the caller, then one proxy of its own. */
+  const CHAIN = '203.0.113.7, 34.111.9.22'
+
+  it('steps over the hop the platform appends after the caller', () => {
+    expect(addressFromHeaders(headers(CHAIN))).toBe('203.0.113.7')
   })
 
-  it('reads a single address', () => {
-    expect(addressFromHeaders(headers('203.0.113.7'))).toBe('203.0.113.7')
+  it('cannot be fooled by a forged entry, however many are sent', () => {
+    // The forgery always sits to the left of what our own edge appends.
+    expect(addressFromHeaders(headers(`1.2.3.4, ${CHAIN}`))).toBe('203.0.113.7')
+    expect(addressFromHeaders(headers(`1.2.3.4, 5.6.7.8, ${CHAIN}`))).toBe('203.0.113.7')
+    expect(addressFromHeaders(headers(`203.0.113.9, ${CHAIN}`))).toBe('203.0.113.7')
+  })
+
+  it('gives one caller one bucket however the platform proxy rotates', () => {
+    const seen = new Set(
+      ['34.111.9.22', '34.111.9.23', '35.190.4.8'].map((proxy) =>
+        addressFromHeaders(headers(`203.0.113.7, ${proxy}`)),
+      ),
+    )
+
+    expect([...seen]).toEqual(['203.0.113.7'])
   })
 
   it.each([
-    ['one internal hop after the caller', '203.0.113.7, 10.0.4.9'],
-    ['two of them', '203.0.113.7, 10.0.4.9, 172.20.1.3'],
-    ['a rotating one — the three buckets measured on Render', '203.0.113.7, 10.201.7.44'],
-    ['loopback', '203.0.113.7, 127.0.0.1'],
-    ['carrier-grade NAT', '203.0.113.7, 100.64.3.9'],
-    ['link-local', '203.0.113.7, 169.254.8.1'],
-    ['an IPv6 unique-local hop', '203.0.113.7, fd00::1'],
-  ])('ignores %s', (_case, value) => {
+    ['a private hop behind the proxy', '203.0.113.7, 34.111.9.22, 10.0.4.9'],
+    ['several of them', '203.0.113.7, 34.111.9.22, 10.0.4.9, 172.20.1.3'],
+    ['loopback', '203.0.113.7, 34.111.9.22, 127.0.0.1'],
+    ['carrier-grade NAT', '203.0.113.7, 34.111.9.22, 100.64.3.9'],
+    ['link-local', '203.0.113.7, 34.111.9.22, 169.254.8.1'],
+    ['an IPv6 unique-local hop', '203.0.113.7, 34.111.9.22, fd00::1'],
+  ])('also steps over %s', (_case, value) => {
     expect(addressFromHeaders(headers(value))).toBe('203.0.113.7')
   })
 
-  it('still cannot be fooled by a forged entry when internal hops follow', () => {
-    // The forgery sits to the left of what our own edge appended.
-    expect(addressFromHeaders(headers('1.2.3.4, 203.0.113.7, 10.0.4.9'))).toBe('203.0.113.7')
-    expect(addressFromHeaders(headers('1.2.3.4, 5.6.7.8, 203.0.113.7, 10.0.4.9'))).toBe(
-      '203.0.113.7',
-    )
-  })
-
   it('drops the port a proxy may append to the address', () => {
-    expect(addressFromHeaders(headers('203.0.113.7:54321, 10.0.4.9'))).toBe('203.0.113.7')
-    expect(addressFromHeaders(headers('[2001:db8::5]:443, 10.0.4.9'))).toBe('2001:db8::5')
+    expect(addressFromHeaders(headers('203.0.113.7:54321, 34.111.9.22'))).toBe('203.0.113.7')
+    expect(addressFromHeaders(headers('[2001:db8::5]:443, 34.111.9.22'))).toBe('2001:db8::5')
   })
 
   it('keeps a bare IPv6 address whole', () => {
-    expect(addressFromHeaders(headers('2001:db8::5, 10.0.4.9'))).toBe('2001:db8::5')
+    expect(addressFromHeaders(headers('2001:db8::5, 34.111.9.22'))).toBe('2001:db8::5')
   })
 
-  it('uses the last hop when nothing in the chain is routable', () => {
-    // The local and single-proxy case, where the last hop is the right answer.
-    expect(addressFromHeaders(headers('10.0.4.9, 127.0.0.1'))).toBe('127.0.0.1')
+  it('takes the only entry there is — the local and single-proxy case', () => {
+    expect(addressFromHeaders(headers('203.0.113.7'))).toBe('203.0.113.7')
+    expect(addressFromHeaders(headers('127.0.0.1'))).toBe('127.0.0.1')
   })
 
   it.each([
@@ -225,11 +232,19 @@ function limited(store: KeyStore, withKeyPerMin: number, noKeyPerMin: number, li
   return app
 }
 
+/**
+ * The chain is shaped the way Render shapes it — the caller, then one proxy of
+ * the platform, rotating. A bare address would exercise the fallback instead
+ * of the path production takes.
+ */
+const proxies = ['34.111.9.22', '34.111.9.23', '35.190.4.8']
+let nextProxy = 0
+
 const hit = (app: Hono, path = '/v1/recommend', token?: string, address = '203.0.113.7') =>
   app.request(path, {
     method: 'POST',
     headers: {
-      'x-forwarded-for': address,
+      'x-forwarded-for': `${address}, ${proxies[nextProxy++ % proxies.length]}`,
       ...(token === undefined ? {} : { authorization: `Bearer ${token}` }),
     },
   })

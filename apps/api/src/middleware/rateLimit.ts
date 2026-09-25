@@ -230,26 +230,42 @@ const INTERNAL = [
 const isInternal = (hop: string) => INTERNAL.some((range) => range.test(hop))
 
 /**
+ * How many entries of `x-forwarded-for` our own infrastructure appends after
+ * the caller's address.
+ *
+ * Measured on Render, 2026-09-25, and not guessed: reading the **last** entry
+ * gave one client with one stable address three to four buckets instead of
+ * one, which means the chain does not end at the caller. Reading the last
+ * *routable* entry changed nothing, which means what follows the caller is
+ * public — a proxy address of the platform, not a private hop. One step back
+ * from the end is therefore where the caller is.
+ *
+ * If Render ever puts another proxy in front, this number is where that shows
+ * up, and the way to find it out again is in the scratchpad: drain the bucket,
+ * wait a minute, count what gets served. Ten means one bucket.
+ */
+export const TRUSTED_PROXY_HOPS = 1
+
+/**
  * The source address, for callers who have no key.
  *
- * The rule is **the last entry that could belong to somebody on the
- * internet**, and both halves of it are load-bearing.
+ * Counting backwards from the end, never forwards from the start, is what
+ * makes the address unforgeable: whatever a caller writes into the header
+ * themselves stays to the **left** of what our own edge appends, so no
+ * invented value can become the one we count by. Reading the first entry
+ * would hand every caller a fresh allowance for every value they care to
+ * invent.
  *
- * *Last*, because a proxy appends the address of the peer it received the
- * connection from. Whatever a caller writes into the header themselves stays
- * to the left of what our own edge appends, so no invented value can become
- * the one we count by — while reading the first entry would hand every caller
- * a fresh allowance for every value they care to invent.
+ * Two things are stepped over before counting. Entries that cannot belong to
+ * anybody on the internet — loopback, RFC 1918, link-local, carrier-grade NAT
+ * and their IPv6 equivalents — are certainly ours, however many of them there
+ * are. Then `TRUSTED_PROXY_HOPS` routable ones are stepped over as well,
+ * because the platform's own proxy addresses are routable and measurement
+ * says there is one of them.
  *
- * *Could belong to somebody*, because measurement on Render showed the chain
- * does not end at the caller: a single client, one stable address, was given
- * **three** buckets instead of one — its quota tripled, and, far worse, it
- * would have shared those buckets with every other caller that arrived
- * through the same internal hop. The hops our platform adds after the caller
- * are its own, and its own addresses are not routable from outside.
- *
- * If nothing in the chain looks routable the last entry is used anyway: that
- * is the local and single-proxy case, where it is the right answer.
+ * If that lands before the start of the chain, the first entry is used. That
+ * is the local and single-proxy case; in production the chain is never that
+ * short, because a caller can only make it longer.
  */
 export function addressFromHeaders(c: Context): string {
   const hops = (c.req.header('x-forwarded-for') ?? '')
@@ -259,9 +275,13 @@ export function addressFromHeaders(c: Context): string {
 
   if (hops.length === 0) return 'unknown'
 
-  const routable = hops.filter((hop) => !isInternal(hop))
+  // Trailing hops of our own, whatever their number.
+  let end = hops.length
+  while (end > 1 && isInternal(hops[end - 1] ?? '')) end -= 1
 
-  return routable.at(-1) ?? hops.at(-1) ?? 'unknown'
+  const index = Math.max(0, end - 1 - TRUSTED_PROXY_HOPS)
+
+  return hops[index] ?? 'unknown'
 }
 
 /**

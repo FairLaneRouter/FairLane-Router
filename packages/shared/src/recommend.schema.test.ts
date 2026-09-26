@@ -132,8 +132,14 @@ describe('recommendationSchema', () => {
     expect(recommendationSchema.safeParse(fallback).success).toBe(true)
   })
 
-  it.each(['dataAgeMs', 'landProbability'])('refuses fresh advice without %s', (field) => {
-    expect(issueOf(recommendationSchema, { ...fresh, [field]: null }).field).toBe(field)
+  it('refuses fresh advice without its data age', () => {
+    expect(issueOf(recommendationSchema, { ...fresh, dataAgeMs: null }).field).toBe('dataAgeMs')
+  })
+
+  it('accepts fresh advice with no basis for a landing probability yet', () => {
+    const advice = { ...fresh, landProbability: null }
+
+    expect(recommendationSchema.parse(advice)).toEqual(advice)
   })
 
   it('accepts a note about another group', () => {

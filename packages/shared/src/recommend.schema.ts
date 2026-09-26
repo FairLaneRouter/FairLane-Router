@@ -105,10 +105,9 @@ const lamportsSchema = z.int().nonnegative()
  * A recommendation (FR-016, FR-017, FR-018). Two invariants hold across
  * fields, and both guard against a quiet lie:
  *
- * - **Fresh advice carries its evidence.** With `isStale: false`, neither the
- *   data age nor the landing probability may be `null`. `null` is reserved for
- *   the stale fallback, where there is honestly nothing to measure them by —
- *   and even there it means "unknown", never zero.
+ * - **Fresh advice carries its age.** With `isStale: false`, `dataAgeMs` may
+ *   not be `null`: "fresh" is a claim about an age, and a claim without the
+ *   number it rests on cannot be checked.
  * - **A note never points at the group it recommends.** "A cheaper group
  *   exists but cannot be sent through" about the group we are sending through
  *   would contradict itself.
@@ -122,6 +121,12 @@ export const recommendationSchema = z
     priorityFeeMicroLamports: z.int().nonnegative(),
     /** Full landing cost: base fee, priority fee and tip together. */
     expectedCost: lamportsSchema,
+    /**
+     * `null` means "no basis to estimate", never zero. Passive collection sees
+     * only what landed, not when it was sent, so the share landing within the
+     * window comes from our own sends (T058) — until then it is `null` even in
+     * fresh advice rather than a number that only looks like a probability.
+     */
     landProbability: z.number().min(0).max(1).nullable(),
     dataAgeMs: z.int().nonnegative().nullable(),
     isStale: z.boolean(),
@@ -130,10 +135,6 @@ export const recommendationSchema = z
   .refine((value) => value.isStale || value.dataAgeMs !== null, {
     message: 'dataAgeMs may be null only in a stale fallback',
     path: ['dataAgeMs'],
-  })
-  .refine((value) => value.isStale || value.landProbability !== null, {
-    message: 'landProbability may be null only in a stale fallback',
-    path: ['landProbability'],
   })
   .refine((value) => value.note === null || value.note.groupId !== value.groupId, {
     message: 'a note must be about a group other than the recommended one',

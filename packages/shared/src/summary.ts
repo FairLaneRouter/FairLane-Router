@@ -158,7 +158,9 @@ export class LamportsRangeError extends Error {
  * помилки. Реальні вартості посадки на десять порядків менші за цю межу, тож
  * спрацювання означає зіпсовані дані, а не тісний тип.
  */
-function toJsonLamports(value: bigint | null): number | null {
+export function toJsonLamports(value: bigint): number
+export function toJsonLamports(value: bigint | null): number | null
+export function toJsonLamports(value: bigint | null): number | null {
   if (value === null) return null
 
   if (value > BigInt(Number.MAX_SAFE_INTEGER) || value < BigInt(-Number.MAX_SAFE_INTEGER)) {

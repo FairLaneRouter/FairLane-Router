@@ -1,7 +1,7 @@
 import type { ChannelGroup } from './channels.ts'
 import { BASE_FEE_PER_SIGNATURE } from './cost.ts'
-import type { Intent, RecommendMode } from './recommend.schema.ts'
-import { MIN_GROUP_OBSERVATIONS } from './summary.ts'
+import type { Intent, Recommendation, RecommendMode } from './recommend.schema.ts'
+import { MIN_GROUP_OBSERVATIONS, toJsonLamports } from './summary.ts'
 
 /**
  * Channel choice for a recommendation (FR-016), as pure functions over what
@@ -49,6 +49,8 @@ export type GroupBidStats = {
    * the side of landing, which is the right side for a bid.
    */
   readonly priorityPriceMicroLamports: PercentilePair
+  /** The newest landing behind these numbers — what the data age is measured from. */
+  readonly lastBlockTime: Date
 }
 
 /** A group priced for one intent. Money stays `bigint` until the JSON boundary. */
@@ -59,6 +61,7 @@ export type PricedGroup = {
   readonly tipLamports: bigint
   readonly priorityFeeMicroLamports: bigint
   readonly expectedCost: bigint
+  readonly lastBlockTime: Date
 }
 
 /**
@@ -119,6 +122,7 @@ export function priceGroups(options: PriceGroupsOptions): PricedGroup[] {
       tipLamports,
       priorityFeeMicroLamports,
       expectedCost,
+      lastBlockTime: stat.lastBlockTime,
     })
   }
 
@@ -141,8 +145,61 @@ function byCost(left: PricedGroup, right: PricedGroup): number {
 /**
  * The recommended group: the cheapest one we can actually send through. An
  * observed-only group is never recommended (FR-041). `null` when nothing
- * sendable has enough evidence — the stale fallback of T043 answers then.
+ * sendable has enough evidence.
  */
 export function chooseGroup(ranked: readonly PricedGroup[]): PricedGroup | null {
   return ranked.find((group) => group.isSendable) ?? null
+}
+
+export type RecommendOptions = {
+  readonly intent: Intent
+  /** Output of `priceGroups` for the same intent. */
+  readonly ranked: readonly PricedGroup[]
+  readonly now: Date
+  /** The summary's own threshold (`staleAfterMs`), so the two never disagree on "stale". */
+  readonly staleAfterMs: number
+}
+
+/** Age of a group's data; a block time ahead of our clock counts as brand new. */
+function ageMs(group: PricedGroup, now: Date): number {
+  return Math.max(0, now.getTime() - group.lastBlockTime.getTime())
+}
+
+/**
+ * The recommendation itself (FR-016, FR-017, FR-018).
+ *
+ * Freshness is judged **per group**, from that group's newest landing: one
+ * busy group must not make the data of a silent one look current. The choice
+ * is made among fresh sendable groups first. Only when none is fresh does the
+ * fallback of FR-018 answer — the cheapest sendable group on whatever data it
+ * has, marked `isStale: true` and carrying its real age, so the caller sees
+ * how old the advice is instead of trusting it blindly.
+ *
+ * `null` when no sendable group has evidence at all. There is no invented
+ * default price behind it: a number nobody measured would be the one thing
+ * this product exists not to give. What to answer then is the route's call.
+ *
+ * `landProbability` is `null` until our own sends measure it (T058), and
+ * `note` is filled by T044.
+ */
+export function recommend(options: RecommendOptions): Recommendation | null {
+  const { intent, ranked, now, staleAfterMs } = options
+
+  const fresh = ranked.filter((group) => ageMs(group, now) <= staleAfterMs)
+  const chosen = chooseGroup(fresh) ?? chooseGroup(ranked)
+  if (chosen === null) return null
+
+  const dataAgeMs = ageMs(chosen, now)
+
+  return {
+    groupId: chosen.groupId,
+    targetSlots: intent.targetSlots,
+    tipLamports: toJsonLamports(chosen.tipLamports),
+    priorityFeeMicroLamports: toJsonLamports(chosen.priorityFeeMicroLamports),
+    expectedCost: toJsonLamports(chosen.expectedCost),
+    landProbability: null,
+    dataAgeMs,
+    isStale: dataAgeMs > staleAfterMs,
+    note: null,
+  }
 }

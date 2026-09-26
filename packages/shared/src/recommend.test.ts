@@ -1,17 +1,23 @@
 import { describe, expect, it } from 'vitest'
 import type { ChannelGroup } from './channels.ts'
 import { BASE_FEE_PER_SIGNATURE } from './cost.ts'
-import type { Intent } from './recommend.schema.ts'
+import { type Intent, recommendationSchema } from './recommend.schema.ts'
 import {
   chooseGroup,
   type GroupBidStats,
   type PricedGroup,
   priceGroups,
   priorityFeeLamports,
+  recommend,
 } from './recommend.ts'
 import { MIN_GROUP_OBSERVATIONS } from './summary.ts'
 
 const BASE = BigInt(BASE_FEE_PER_SIGNATURE)
+
+const NOW = new Date('2026-09-26T12:00:00.000Z')
+const STALE_AFTER_MS = 60_000
+
+const ago = (ms: number) => new Date(NOW.getTime() - ms)
 
 function group(id: string, patch: Partial<ChannelGroup> = {}): ChannelGroup {
   return {
@@ -30,12 +36,14 @@ function stats(
   tip: [bigint, bigint],
   price: [bigint, bigint],
   observations = MIN_GROUP_OBSERVATIONS,
+  lastBlockTime = NOW,
 ): GroupBidStats {
   return {
     groupId,
     observations,
     tipLamports: { p50: tip[0], p90: tip[1] },
     priorityPriceMicroLamports: { p50: price[0], p90: price[1] },
+    lastBlockTime,
   }
 }
 
@@ -86,6 +94,7 @@ describe('priceGroups', () => {
       tipLamports: 0n,
       priorityFeeMicroLamports: 10_000n,
       expectedCost: BASE + 2_000n,
+      lastBlockTime: NOW,
     })
   })
 
@@ -217,5 +226,83 @@ describe('chooseGroup', () => {
 
     expect(chooseGroup(ranked)).toBeNull()
     expect(chooseGroup([])).toBeNull()
+  })
+})
+
+describe('recommend', () => {
+  const advise = (groupStats: readonly GroupBidStats[], patch: Partial<Intent> = {}) =>
+    recommend({
+      intent: intent(patch),
+      ranked: priceGroups({ intent: intent(patch), groups: registry, stats: groupStats }),
+      now: NOW,
+      staleAfterMs: STALE_AFTER_MS,
+    })
+
+  it('answers with the chosen group, its numbers and the age of its data', () => {
+    const advice = advise([rpc, stats('jito', [1_000n, 20_000n], [0n, 0n], 60, ago(4_200))])
+
+    expect(advice).toEqual({
+      groupId: 'jito',
+      targetSlots: 4,
+      tipLamports: 1_000,
+      priorityFeeMicroLamports: 0,
+      expectedCost: BASE_FEE_PER_SIGNATURE + 1_000,
+      landProbability: null,
+      dataAgeMs: 4_200,
+      isStale: false,
+      note: null,
+    })
+  })
+
+  it('produces what the response schema accepts', () => {
+    expect(recommendationSchema.safeParse(advise([rpc, jito])).success).toBe(true)
+  })
+
+  it('echoes the window the caller asked about', () => {
+    expect(advise([rpc], { targetSlots: 2 })?.targetSlots).toBe(2)
+  })
+
+  it('passes over a cheaper group whose data has gone stale', () => {
+    const staleJito = stats('jito', [1_000n, 20_000n], [0n, 0n], 60, ago(STALE_AFTER_MS + 1))
+
+    expect(advise([rpc, staleJito])).toMatchObject({ groupId: 'rpc', isStale: false })
+  })
+
+  it('treats data exactly at the threshold as fresh', () => {
+    const edge = stats('rpc', [0n, 0n], [10_000n, 10_000n], 60, ago(STALE_AFTER_MS))
+
+    expect(advise([edge])).toMatchObject({ dataAgeMs: STALE_AFTER_MS, isStale: false })
+  })
+
+  it('falls back to the cheapest stale group, marked stale, when nothing is fresh', () => {
+    const oldRpc = stats('rpc', [0n, 0n], [10_000n, 10_000n], 60, ago(3_600_000))
+    const olderJito = stats('jito', [1_000n, 1_000n], [0n, 0n], 60, ago(7_200_000))
+
+    expect(advise([oldRpc, olderJito])).toMatchObject({
+      groupId: 'jito',
+      dataAgeMs: 7_200_000,
+      isStale: true,
+    })
+  })
+
+  it('does not let a fresh observed-only group vouch for a stale sendable one', () => {
+    const ranked = priceGroups({
+      intent: intent(),
+      groups: [group('rpc'), group('jito', { canSend: false })],
+      stats: [stats('rpc', [0n, 0n], [10_000n, 10_000n], 60, ago(3_600_000)), jito],
+    })
+
+    expect(
+      recommend({ intent: intent(), ranked, now: NOW, staleAfterMs: STALE_AFTER_MS }),
+    ).toMatchObject({ groupId: 'rpc', isStale: true })
+  })
+
+  it('counts a block time ahead of our clock as brand new, not negative', () => {
+    expect(advise([stats('rpc', [0n, 0n], [1n, 1n], 60, ago(-5_000))])?.dataAgeMs).toBe(0)
+  })
+
+  it('returns null rather than a made-up price when nothing sendable has evidence', () => {
+    expect(advise([])).toBeNull()
+    expect(advise([stats('rpc', [0n, 0n], [1n, 1n], 1)])).toBeNull()
   })
 })

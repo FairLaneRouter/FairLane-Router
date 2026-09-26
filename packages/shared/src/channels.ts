@@ -13,16 +13,16 @@ const ENDPOINT_ENV_KEY = /^CHANNEL_[A-Z0-9]+(?:_[A-Z0-9]+)*_ENDPOINT$/
 const addressSchema = z
   .string()
   .refine(isSolanaAddress, 'не адреса Solana: base58 має розкодуватись у 32 байти')
-const idSchema = z.string().regex(/^[a-z0-9-]+$/, 'ідентифікатор — тільки [a-z0-9-]')
+export const registryIdSchema = z.string().regex(/^[a-z0-9-]+$/, 'ідентифікатор — тільки [a-z0-9-]')
 
 export const groupDefinitionSchema = z.object({
-  id: idSchema,
+  id: registryIdSchema,
   name: z.string().min(1),
 })
 
 export const channelDefinitionSchema = z.object({
-  id: idSchema,
-  groupId: idSchema,
+  id: registryIdSchema,
+  groupId: registryIdSchema,
   name: z.string().min(1),
   /**
    * Порожній список означає «розпізнавати нічим». Це не помилка конфігурації:

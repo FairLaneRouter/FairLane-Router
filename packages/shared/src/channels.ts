@@ -36,6 +36,12 @@ export const channelDefinitionSchema = z.object({
   endpointEnvKey: z.string().regex(ENDPOINT_ENV_KEY).nullable().default(null),
   /** Звідки взяті службові акаунти. Порожньо = не звірено з першоджерелом. */
   sourceUrl: z.url().nullable().default(null),
+  /**
+   * The smallest tip the service accepts, from the same source as its tip
+   * accounts. Below it a transaction is dropped, often without an error, so
+   * advice must never bid under it however low recent landings went.
+   */
+  minTipLamports: z.bigint().nonnegative().default(0n),
 })
 
 export const registryDefinitionSchema = z.object({
@@ -60,6 +66,8 @@ export type ChannelGroup = {
   readonly isObserved: boolean
   /** Група відправна, щойно відправним є хоч один її канал. */
   readonly canSend: boolean
+  /** The lowest minimum among its channels: the cheapest way into the group. */
+  readonly minTipLamports: bigint
 }
 
 export type ChannelRegistry = {
@@ -161,6 +169,10 @@ export function buildChannelRegistry(
       tipAccounts: [...new Set(members.flatMap((channel) => channel.tipAccounts))],
       isObserved: members.some((channel) => channel.isObserved),
       canSend: members.some((channel) => channel.canSend),
+      minTipLamports: members.reduce(
+        (lowest, channel) => (channel.minTipLamports < lowest ? channel.minTipLamports : lowest),
+        members[0]?.minTipLamports ?? 0n,
+      ),
     }
   })
 

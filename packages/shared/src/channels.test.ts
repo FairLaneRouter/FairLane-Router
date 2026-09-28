@@ -232,3 +232,48 @@ describe('sendability', () => {
     expect(registry.groupById('jito')?.canSend).toBe(false)
   })
 })
+
+describe('minimum tips', () => {
+  it('carries each service minimum from its documentation', () => {
+    const registry = buildChannelRegistry(DEFAULT_REGISTRY)
+    const floor = (id: string) => registry.groupById(id)?.minTipLamports
+
+    expect(floor('jito')).toBe(1_000n)
+    expect(floor('nozomi')).toBe(1_000_000n)
+    expect(floor('bloxroute')).toBe(1_000_000n)
+    expect(floor(RPC_GROUP_ID)).toBe(0n)
+  })
+
+  it('has no floor where the definition names none', () => {
+    const registry = buildChannelRegistry(definition())
+
+    expect(registry.groupById('jito')?.minTipLamports).toBe(0n)
+  })
+
+  it('takes the lowest minimum among the channels of a group', () => {
+    const source = definition()
+    const registry = buildChannelRegistry({
+      ...source,
+      channels: [
+        {
+          id: 'jito-a',
+          groupId: 'jito',
+          name: 'Jito A',
+          tipAccounts: [ACCOUNT_A],
+          minTipLamports: 5_000n,
+        },
+        {
+          id: 'jito-b',
+          groupId: 'jito',
+          name: 'Jito B',
+          tipAccounts: [ACCOUNT_B],
+          minTipLamports: 1_000n,
+        },
+        { id: 'rpc', groupId: 'rpc', name: 'Plain RPC' },
+      ],
+    })
+
+    expect(registry.groupById('jito')?.minTipLamports).toBe(1_000n)
+  })
+})
+

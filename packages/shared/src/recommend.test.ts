@@ -28,6 +28,7 @@ function group(id: string, patch: Partial<ChannelGroup> = {}): ChannelGroup {
     tipAccounts: [],
     isObserved: true,
     canSend: true,
+    minTipLamports: 0n,
     ...patch,
   }
 }
@@ -394,3 +395,41 @@ describe('recommend with a note', () => {
     })
   })
 })
+
+describe('the service minimum tip', () => {
+  it('raises a tip that recent landers paid below the minimum, and prices it in', () => {
+    const quietJito = stats('jito', [200n, 20_000n], [0n, 0n])
+    const [priced] = priceGroups({
+      intent: intent(),
+      groups: [group('jito', { minTipLamports: 1_000n })],
+      stats: [quietJito],
+    })
+
+    expect(priced).toMatchObject({ tipLamports: 1_000n, expectedCost: BASE + 1_000n })
+  })
+
+  it('leaves a tip above the minimum as it is', () => {
+    const [priced] = priceGroups({
+      intent: intent({ mode: 'fast' }),
+      groups: [group('jito', { minTipLamports: 1_000n })],
+      stats: [jito],
+    })
+
+    expect(priced?.tipLamports).toBe(20_000n)
+  })
+
+  it('does not note a group as cheaper when it is only cheaper below its own minimum', () => {
+    // At 200 000 CU rpc costs BASE + 2 000. Recent landers tipped this group
+    // 500, but it accepts nothing under 1 000 000: it is not really cheaper.
+    const ranked = priceGroups({
+      intent: intent(),
+      groups: [group('rpc'), group('nozomi', { canSend: false, minTipLamports: 1_000_000n })],
+      stats: [rpc, stats('nozomi', [500n, 500n], [0n, 0n])],
+    })
+
+    expect(
+      recommend({ intent: intent(), ranked, now: NOW, staleAfterMs: STALE_AFTER_MS }),
+    ).toMatchObject({ groupId: 'rpc', note: null })
+  })
+})
+

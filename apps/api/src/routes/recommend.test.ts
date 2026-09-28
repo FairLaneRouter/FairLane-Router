@@ -29,6 +29,7 @@ function group(id: string, patch: Partial<ChannelGroup> = {}): ChannelGroup {
     tipAccounts: [],
     isObserved: true,
     canSend: true,
+    minTipLamports: 0n,
     ...patch,
   }
 }

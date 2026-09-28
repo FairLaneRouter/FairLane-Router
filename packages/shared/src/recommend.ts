@@ -115,7 +115,11 @@ export function priceGroups(options: PriceGroupsOptions): PricedGroup[] {
     if (group === undefined || !group.isObserved) continue
     if (stat.observations < minObservations) continue
 
-    const tipLamports = stat.tipLamports[level]
+    // Recent landers may have tipped less than the service now accepts — a
+    // quiet hour, or a minimum raised since. Advice below the floor would be
+    // dropped, so the floor wins; the cost is priced with it too.
+    const observedTip = stat.tipLamports[level]
+    const tipLamports = observedTip < group.minTipLamports ? group.minTipLamports : observedTip
     const priorityFeeMicroLamports = stat.priorityPriceMicroLamports[level]
     const expectedCost =
       BigInt(BASE_FEE_PER_SIGNATURE) +

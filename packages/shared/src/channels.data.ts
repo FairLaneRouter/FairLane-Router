@@ -43,6 +43,8 @@ export const DEFAULT_REGISTRY: RegistryDefinition = {
       isSendable: true,
       endpointEnvKey: 'CHANNEL_JITO_ENDPOINT',
       sourceUrl: 'https://docs.jito.wtf/lowlatencytxnsend/',
+      // "The minimum tips is 1000 lamports" — same page, checked 2026-09-28.
+      minTipLamports: 1_000n,
     },
     {
       id: 'nozomi',
@@ -71,6 +73,9 @@ export const DEFAULT_REGISTRY: RegistryDefinition = {
       isSendable: true,
       endpointEnvKey: 'CHANNEL_NOZOMI_ENDPOINT',
       sourceUrl: 'https://use.temporal.xyz/nozomi/tipping-and-faq',
+      // "The default minimum tip is 0.001 SOL"; below it the transaction is
+      // silently dropped — same page, checked 2026-09-28.
+      minTipLamports: 1_000_000n,
     },
     {
       id: 'bloxroute',
@@ -99,6 +104,9 @@ export const DEFAULT_REGISTRY: RegistryDefinition = {
       isSendable: true,
       endpointEnvKey: 'CHANNEL_BLOXROUTE_ENDPOINT',
       sourceUrl: 'https://docs.bloxroute.com/solana/trader-api/introduction/tip-and-tipping-addresses',
+      // "The minimum required tip is 0.001 SOL (1,000,000 lamports)" — same
+      // page, checked 2026-09-28.
+      minTipLamports: 1_000_000n,
     },
     {
       id: 'rpc',
@@ -109,6 +117,8 @@ export const DEFAULT_REGISTRY: RegistryDefinition = {
       isSendable: true,
       endpointEnvKey: null,
       sourceUrl: null,
+      // Plain RPC takes no tip, so there is nothing to fall below.
+      minTipLamports: 0n,
     },
   ],
 }

@@ -1,6 +1,11 @@
 import type { ChannelGroup } from './channels.ts'
 import { BASE_FEE_PER_SIGNATURE } from './cost.ts'
-import type { Intent, Recommendation, RecommendMode } from './recommend.schema.ts'
+import type {
+  Intent,
+  Recommendation,
+  RecommendationNote,
+  RecommendMode,
+} from './recommend.schema.ts'
 import { MIN_GROUP_OBSERVATIONS, toJsonLamports } from './summary.ts'
 
 /**
@@ -56,6 +61,8 @@ export type GroupBidStats = {
 /** A group priced for one intent. Money stays `bigint` until the JSON boundary. */
 export type PricedGroup = {
   readonly groupId: string
+  /** The registry's display name — what a note calls the group. */
+  readonly name: string
   readonly isSendable: boolean
   readonly observations: number
   readonly tipLamports: bigint
@@ -117,6 +124,7 @@ export function priceGroups(options: PriceGroupsOptions): PricedGroup[] {
 
     priced.push({
       groupId: stat.groupId,
+      name: group.name,
       isSendable: group.canSend,
       observations: stat.observations,
       tipLamports,
@@ -179,14 +187,15 @@ function ageMs(group: PricedGroup, now: Date): number {
  * default price behind it: a number nobody measured would be the one thing
  * this product exists not to give. What to answer then is the route's call.
  *
- * `landProbability` is `null` until our own sends measure it (T058), and
- * `note` is filled by T044.
+ * `landProbability` is `null` until our own sends measure it (T058).
  */
 export function recommend(options: RecommendOptions): Recommendation | null {
   const { intent, ranked, now, staleAfterMs } = options
 
   const fresh = ranked.filter((group) => ageMs(group, now) <= staleAfterMs)
-  const chosen = chooseGroup(fresh) ?? chooseGroup(ranked)
+  const freshChoice = chooseGroup(fresh)
+  const pool = freshChoice === null ? ranked : fresh
+  const chosen = freshChoice ?? chooseGroup(ranked)
   if (chosen === null) return null
 
   const dataAgeMs = ageMs(chosen, now)
@@ -200,6 +209,35 @@ export function recommend(options: RecommendOptions): Recommendation | null {
     landProbability: null,
     dataAgeMs,
     isStale: dataAgeMs > staleAfterMs,
-    note: null,
+    note: noteFor(chosen, pool),
+  }
+}
+
+/**
+ * The note of FR-041: the cheapest group that beats the recommended one on
+ * price but cannot be sent through. Without it the advice would look like a
+ * bug next to our own dashboard, which shows that cheaper group.
+ *
+ * Only groups from the pool the choice was made in count: when the advice
+ * rests on fresh data, a stale group's old price says nothing about now; in
+ * the stale fallback every group is on old data anyway. A tie is not
+ * "cheaper", so it earns no note. `null` when the recommendation already is
+ * the cheapest group in that pool.
+ */
+export function noteFor(
+  chosen: PricedGroup,
+  pool: readonly PricedGroup[],
+): RecommendationNote | null {
+  const cheaper = pool.find(
+    (group) => !group.isSendable && group.expectedCost < chosen.expectedCost,
+  )
+  if (cheaper === undefined) return null
+
+  return {
+    code: 'CHEAPER_GROUP_NOT_SENDABLE',
+    groupId: cheaper.groupId,
+    message:
+      `${cheaper.name} is cheaper (${cheaper.expectedCost} vs ${chosen.expectedCost} lamports) ` +
+      `but observed only: FairLane cannot send through it, so ${chosen.name} is recommended`,
   }
 }

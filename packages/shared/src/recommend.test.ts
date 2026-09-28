@@ -5,6 +5,7 @@ import { type Intent, recommendationSchema } from './recommend.schema.ts'
 import {
   chooseGroup,
   type GroupBidStats,
+  noteFor,
   type PricedGroup,
   priceGroups,
   priorityFeeLamports,
@@ -89,6 +90,7 @@ describe('priceGroups', () => {
 
     expect(priced).toEqual({
       groupId: 'rpc',
+      name: 'rpc',
       isSendable: true,
       observations: MIN_GROUP_OBSERVATIONS,
       tipLamports: 0n,
@@ -304,5 +306,91 @@ describe('recommend', () => {
   it('returns null rather than a made-up price when nothing sendable has evidence', () => {
     expect(advise([])).toBeNull()
     expect(advise([stats('rpc', [0n, 0n], [1n, 1n], 1)])).toBeNull()
+  })
+})
+
+describe('noteFor', () => {
+  const price = (observed: readonly ChannelGroup[], groupStats: readonly GroupBidStats[]) =>
+    priceGroups({ intent: intent(), groups: observed, stats: groupStats })
+  const at = (ranked: readonly PricedGroup[], index: number): PricedGroup => {
+    const priced = ranked[index]
+    if (priced === undefined) throw new Error(`no group at rank ${index}`)
+    return priced
+  }
+
+  it('names the cheapest group that cannot be sent through', () => {
+    const ranked = price(
+      [group('rpc'), group('jito', { name: 'Jito', canSend: false })],
+      [rpc, jito],
+    )
+    const chosen = at(ranked, 1)
+
+    expect(noteFor(chosen, ranked)).toEqual({
+      code: 'CHEAPER_GROUP_NOT_SENDABLE',
+      groupId: 'jito',
+      message: expect.stringContaining('Jito'),
+    })
+    expect(noteFor(chosen, ranked)?.message).toContain(String(at(ranked, 0).expectedCost))
+  })
+
+  it('points at the cheapest when several observed-only groups beat the choice', () => {
+    const cheaper = stats('nozomi', [500n, 500n], [0n, 0n])
+    const ranked = price(
+      [group('rpc'), group('jito', { canSend: false }), group('nozomi', { canSend: false })],
+      [rpc, jito, cheaper],
+    )
+
+    expect(noteFor(at(ranked, 2), ranked)?.groupId).toBe('nozomi')
+  })
+
+  it('stays silent when the recommendation already is the cheapest', () => {
+    const ranked = price([group('rpc', { canSend: false }), group('jito')], [rpc, jito])
+
+    expect(noteFor(at(ranked, 0), ranked)).toBeNull()
+  })
+
+  it('does not call a tie cheaper', () => {
+    const twin = stats('twin', [0n, 0n], [10_000n, 50_000n], MIN_GROUP_OBSERVATIONS + 1)
+    const ranked = price([group('rpc'), group('twin', { canSend: false })], [rpc, twin])
+
+    expect(ids(ranked)).toEqual(['twin', 'rpc'])
+    expect(noteFor(at(ranked, 1), ranked)).toBeNull()
+  })
+})
+
+describe('recommend with a note', () => {
+  const observedJito = [group('rpc'), group('jito', { name: 'Jito', canSend: false })]
+  const advise = (groupStats: readonly GroupBidStats[]) =>
+    recommend({
+      intent: intent(),
+      ranked: priceGroups({ intent: intent(), groups: observedJito, stats: groupStats }),
+      now: NOW,
+      staleAfterMs: STALE_AFTER_MS,
+    })
+
+  it('explains the cheaper observed-only group and still passes the schema', () => {
+    const advice = advise([rpc, jito])
+
+    expect(advice).toMatchObject({
+      groupId: 'rpc',
+      note: { code: 'CHEAPER_GROUP_NOT_SENDABLE', groupId: 'jito' },
+    })
+    expect(recommendationSchema.safeParse(advice).success).toBe(true)
+  })
+
+  it('ignores a stale cheaper group when the advice rests on fresh data', () => {
+    const staleJito = stats('jito', [1_000n, 20_000n], [0n, 0n], 60, ago(STALE_AFTER_MS + 1))
+
+    expect(advise([rpc, staleJito])).toMatchObject({ isStale: false, note: null })
+  })
+
+  it('keeps the note in the stale fallback when the cheaper group is fresh', () => {
+    const oldRpc = stats('rpc', [0n, 0n], [10_000n, 50_000n], 60, ago(3_600_000))
+
+    expect(advise([oldRpc, jito])).toMatchObject({
+      groupId: 'rpc',
+      isStale: true,
+      note: { groupId: 'jito' },
+    })
   })
 })

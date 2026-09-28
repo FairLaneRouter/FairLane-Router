@@ -40,3 +40,9 @@ services:
         sync: false
       - key: DATABASE_URL
         sync: false
+      # Jito's public Block Engine takes transactions without a key (1 request
+      # a second per IP per region), so the value is not a secret and lives
+      # here. Frankfurt, because the service runs there. The other channels
+      # need keys of their own and stay observed-only until they have them.
+      - key: CHANNEL_JITO_ENDPOINT
+        value: https://frankfurt.mainnet.block-engine.jito.wtf/api/v1/transactions

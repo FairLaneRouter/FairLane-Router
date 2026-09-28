@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   BlockNotAvailableError,
   createRpcClient,
+  endpointLabel,
   MAX_SUPPORTED_TX_VERSION,
   RpcError,
   SlotSkippedError,
@@ -171,5 +172,42 @@ describe('createRpcClient', () => {
     const rpc = createRpcClient({ url: 'https://rpc.example', fetch })
 
     await expect(rpc.getSlot()).rejects.toBeInstanceOf(RpcError)
+  })
+
+  // The key lives in the URL: Helius puts it in the query, others in the path.
+  // The error text goes to the log, so it may name the host and nothing more.
+  it('keeps the key out of the error when every url fails', async () => {
+    const key = 'secret-key-0123456789'
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: false, status: 429, json: async () => ({}) })
+      .mockRejectedValueOnce(new Error(`request to https://backup.example/${key} failed`))
+    const rpc = createRpcClient({
+      url: `https://mainnet.helius-rpc.com/?api-key=${key}`,
+      fallbackUrl: `https://backup.example/${key}`,
+      fetch,
+    })
+
+    const failure = await rpc.getSlot().catch((cause: unknown) => cause)
+
+    expect(failure).toBeInstanceOf(RpcError)
+    expect(String((failure as Error).message)).not.toContain(key)
+    expect((failure as Error).message).toContain('mainnet.helius-rpc.com: HTTP 429')
+    expect((failure as Error).message).toContain('request to backup.example failed')
+  })
+})
+
+describe('endpointLabel', () => {
+  it('names an endpoint by its host, without path or query', () => {
+    expect(endpointLabel('https://mainnet.helius-rpc.com/?api-key=abc')).toBe(
+      'mainnet.helius-rpc.com',
+    )
+    expect(endpointLabel('https://solana-mainnet.g.alchemy.com/v2/abc')).toBe(
+      'solana-mainnet.g.alchemy.com',
+    )
+  })
+
+  it('does not echo a value that is not a URL', () => {
+    expect(endpointLabel('not a url with abc')).toBe('rpc endpoint')
   })
 })

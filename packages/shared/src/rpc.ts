@@ -122,6 +122,27 @@ const envelopeSchema = z.object({
   error: z.object({ code: z.number(), message: z.string() }).optional(),
 })
 
+/**
+ * How an endpoint is named in an error: by its host alone. Providers put the
+ * key in the URL — Helius in the query, others in the path — and an error
+ * message ends up in the log, which more people read than the environment.
+ * The full URL used to go there, key included.
+ */
+export function endpointLabel(url: string): string {
+  try {
+    return new URL(url).host
+  } catch {
+    return 'rpc endpoint'
+  }
+}
+
+/** A failure's own text with the endpoint's URL in it, if any, replaced by its label. */
+function describeFailure(cause: unknown, url: string): string {
+  const text = cause instanceof Error ? cause.message : String(cause)
+
+  return text.split(url).join(endpointLabel(url))
+}
+
 export type FetchLike = (url: string, init: { method: string; headers: Record<string, string>; body: string }) => Promise<{
   ok: boolean
   status: number
@@ -157,12 +178,12 @@ export function createRpcClient(options: RpcClientOptions): RpcClient {
           body,
         })
         if (!response.ok) {
-          failures.push(`${url}: HTTP ${response.status}`)
+          failures.push(`${endpointLabel(url)}: HTTP ${response.status}`)
           continue
         }
         payload = await response.json()
       } catch (cause) {
-        failures.push(`${url}: ${cause instanceof Error ? cause.message : String(cause)}`)
+        failures.push(`${endpointLabel(url)}: ${describeFailure(cause, url)}`)
         continue
       }
 

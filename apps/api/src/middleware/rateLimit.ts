@@ -181,6 +181,12 @@ export const REVOKED_KEY = {
   error: { code: 'UNAUTHENTICATED', message: 'The key presented has been revoked', details: {} },
 } as const
 
+/**
+ * What the limiter leaves on the context for the routes behind it: the id of
+ * the key that paid for the request, absent for a keyless caller.
+ */
+export type KeyedEnv = { Variables: { keyId?: string } }
+
 export type RateLimitOptions = {
   readonly store: KeyStore
   readonly logger: Logger

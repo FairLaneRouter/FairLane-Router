@@ -319,6 +319,7 @@ function streamApp(store: SummaryStore) {
       findByHash: () => Promise.reject(new Error('пошук ключів у цих тестах не задіяний')),
     },
     bids: { read: () => Promise.reject(new Error('bid statistics are not used in these tests')) },
+    advice: { record: () => Promise.reject(new Error('the advice log is not used in these tests')) },
     groups: registry.groups,
     staleAfterMs: staleAfterMs(100),
     rateLimitWithKeyPerMin: 120,

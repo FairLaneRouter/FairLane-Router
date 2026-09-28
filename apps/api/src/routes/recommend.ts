@@ -1,4 +1,4 @@
-import type { Database } from '@fairlane/db'
+import { type Database, recommendations } from '@fairlane/db'
 import {
   type ChannelGroup,
   DEFAULT_SUMMARY_WINDOW,
@@ -7,12 +7,15 @@ import {
   intentSchema,
   type Logger,
   priceGroups,
+  priorityFeeLamports,
+  type RecommendMode,
   recommend,
   SUMMARY_WINDOW_MS,
 } from '@fairlane/shared'
 import { sql } from 'drizzle-orm'
 import { Hono } from 'hono'
 import { z } from 'zod'
+import type { KeyedEnv } from '../middleware/rateLimit.ts'
 
 /** What storage knows about bidding through each group over one window. */
 export type BidStatsStore = {
@@ -89,6 +92,49 @@ export function createBidStatsStore(db: Database): BidStatsStore {
 }
 
 /**
+ * One piece of advice as it was given, kept to be checked against what
+ * actually landed (T046). `landed_signature` stays empty here: it is filled by
+ * our own sends (M3), the one place where advice and outcome meet for sure.
+ */
+export type IssuedRecommendation = {
+  /** `null` for a keyless caller (FR-047). */
+  readonly keyId: string | null
+  readonly mode: RecommendMode
+  readonly groupId: string
+  readonly tipLamports: bigint
+  /**
+   * The priority fee in lamports for this intent's compute units — the unit
+   * `landings.priority_fee` is kept in, so the two compare without the limit
+   * that storage never sees.
+   */
+  readonly priorityFeeLamports: bigint
+  readonly expectedCost: bigint
+  readonly dataAgeMs: number
+  readonly wasStale: boolean
+}
+
+export type RecommendationLog = {
+  record(entry: IssuedRecommendation): Promise<void>
+}
+
+export function createRecommendationLog(db: Database): RecommendationLog {
+  return {
+    async record(entry) {
+      await db.insert(recommendations).values({
+        keyId: entry.keyId,
+        mode: entry.mode,
+        groupId: entry.groupId,
+        tipLamports: entry.tipLamports,
+        priorityFee: entry.priorityFeeLamports,
+        expectedCost: entry.expectedCost,
+        dataAgeMs: entry.dataAgeMs,
+        wasStale: entry.wasStale,
+      })
+    },
+  }
+}
+
+/**
  * How long read statistics live — the summary's TTL, for the summary's
  * reason: shorter than one sampling step, so no landing is held back. The
  * statistics do not depend on the intent, so every caller in those seconds
@@ -107,6 +153,7 @@ export const NO_ADVICE = {
 
 export type RecommendRouteOptions = {
   readonly store: BidStatsStore
+  readonly log: RecommendationLog
   readonly groups: readonly ChannelGroup[]
   readonly staleAfterMs: number
   readonly logger: Logger
@@ -126,11 +173,11 @@ export type RecommendRouteOptions = {
  * `programId` is validated but does not change the price yet: statistics are
  * per group, not per program.
  */
-export function recommendRoute(options: RecommendRouteOptions): Hono {
-  const { store, groups, staleAfterMs, logger } = options
+export function recommendRoute(options: RecommendRouteOptions): Hono<KeyedEnv> {
+  const { store, log, groups, staleAfterMs, logger } = options
   const ttlMs = options.cacheTtlMs ?? BID_STATS_CACHE_TTL_MS
   const now = options.now ?? (() => new Date())
-  const app = new Hono()
+  const app = new Hono<KeyedEnv>()
 
   let cached: {
     readonly expiresAt: number
@@ -182,6 +229,29 @@ export function recommendRoute(options: RecommendRouteOptions): Hono {
       logger.warn('no advice: no sendable group has evidence', { groups: stats.length })
 
       return c.json(NO_ADVICE, 503)
+    }
+
+    // Not awaited, like the key counters: the advice is already priced, and a
+    // write on every call would be paid for by SC-004 on every call. A lost row
+    // costs one sample of the check; a failed write is logged, never answered.
+    if (advice.dataAgeMs !== null) {
+      log
+        .record({
+          keyId: c.get('keyId') ?? null,
+          mode: intent.mode,
+          groupId: advice.groupId,
+          tipLamports: BigInt(advice.tipLamports),
+          priorityFeeLamports: priorityFeeLamports(
+            BigInt(advice.priorityFeeMicroLamports),
+            intent.computeUnits,
+          ),
+          expectedCost: BigInt(advice.expectedCost),
+          dataAgeMs: advice.dataAgeMs,
+          wasStale: advice.isStale,
+        })
+        .catch((cause: unknown) => {
+          logger.error('advice not recorded', { groupId: advice.groupId, err: cause })
+        })
     }
 
     logger.debug('advice given', {

@@ -5,7 +5,7 @@ import { rateLimit } from './middleware/rateLimit.ts'
 import { healthRoute, type HealthStore } from './routes/health.ts'
 import { historyRoute, type HistoryStore } from './routes/history.ts'
 import { keysRoute, type KeyStore } from './routes/keys.ts'
-import { type BidStatsStore, recommendRoute } from './routes/recommend.ts'
+import { type BidStatsStore, type RecommendationLog, recommendRoute } from './routes/recommend.ts'
 import { createSummaryHub, streamRoute, type SummaryHub } from './routes/stream.ts'
 import { createSummaryProvider, summaryRoute, type SummaryStore } from './routes/summary.ts'
 
@@ -15,6 +15,7 @@ export type AppOptions = {
   readonly history: HistoryStore
   readonly keys: KeyStore
   readonly bids: BidStatsStore
+  readonly advice: RecommendationLog
   readonly groups: readonly ChannelGroup[]
   readonly staleAfterMs: number
   readonly rateLimitWithKeyPerMin: number
@@ -49,7 +50,7 @@ export type App = {
  * а не в відповідь.
  */
 export function createApp(options: AppOptions): App {
-  const { summary, health, history, keys, bids, groups, staleAfterMs, logger } = options
+  const { summary, health, history, keys, bids, advice, groups, staleAfterMs, logger } = options
 
   const provider = createSummaryProvider({
     store: summary,
@@ -139,6 +140,7 @@ export function createApp(options: AppOptions): App {
     '/',
     recommendRoute({
       store: bids,
+      log: advice,
       groups,
       staleAfterMs,
       logger,

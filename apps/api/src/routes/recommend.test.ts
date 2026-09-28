@@ -2,13 +2,20 @@ import {
   type ChannelGroup,
   createLogger,
   type GroupBidStats,
+  generateKeyToken,
   MIN_GROUP_OBSERVATIONS,
   recommendationSchema,
 } from '@fairlane/shared'
-import type { Hono } from 'hono'
 import { describe, expect, it } from 'vitest'
 import { createApp } from '../app.ts'
-import { type BidStatsStore, NO_ADVICE, RECOMMEND_WINDOW_MS, recommendRoute } from './recommend.ts'
+import {
+  type BidStatsStore,
+  type IssuedRecommendation,
+  NO_ADVICE,
+  RECOMMEND_WINDOW_MS,
+  type RecommendationLog,
+  recommendRoute,
+} from './recommend.ts'
 
 const NOW = new Date('2026-09-28T12:00:00.000Z')
 const STALE_AFTER_MS = 60_000
@@ -54,13 +61,27 @@ function fakeStore(rows: readonly GroupBidStats[] = [rpc, jito]) {
   return { store, calls }
 }
 
+function fakeLog(fails = false) {
+  const entries: IssuedRecommendation[] = []
+  const log: RecommendationLog = {
+    record: (entry) => {
+      entries.push(entry)
+      return fails ? Promise.reject(new Error('database is down')) : Promise.resolve()
+    },
+  }
+
+  return { log, entries }
+}
+
 function route(
   store: BidStatsStore,
   groups: readonly ChannelGroup[] = [group('rpc'), group('jito')],
   cacheTtlMs = 0,
+  log: RecommendationLog = fakeLog().log,
 ) {
   return recommendRoute({
     store,
+    log,
     groups,
     staleAfterMs: STALE_AFTER_MS,
     logger: silent,
@@ -75,10 +96,14 @@ const intent = {
   mode: 'cheap',
 }
 
-const post = (app: Hono, body: unknown) =>
+type Requestable = {
+  request(path: string, init: RequestInit): Response | Promise<Response>
+}
+
+const post = (app: Requestable, body: unknown, headers: Record<string, string> = {}) =>
   app.request('/v1/recommend', {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: { 'content-type': 'application/json', ...headers },
     body: typeof body === 'string' ? body : JSON.stringify(body),
   })
 
@@ -187,8 +212,68 @@ describe('POST /v1/recommend', () => {
   })
 })
 
+describe('POST /v1/recommend keeps what it advised (T046)', () => {
+  const rpcOnly = [group('rpc'), group('jito', { canSend: false })]
+
+  it('records the advice with the priority fee in lamports for these units', async () => {
+    const { log, entries } = fakeLog()
+    await post(route(fakeStore().store, rpcOnly, 0, log), intent)
+
+    expect(entries).toEqual([
+      {
+        keyId: null,
+        mode: 'cheap',
+        groupId: 'rpc',
+        tipLamports: 0n,
+        // 10 000 micro-lamports per unit × 200 000 units = 2 000 lamports.
+        priorityFeeLamports: 2_000n,
+        expectedCost: 7_000n,
+        dataAgeMs: 0,
+        wasStale: false,
+      },
+    ])
+  })
+
+  it('records stale advice as stale', async () => {
+    const { log, entries } = fakeLog()
+    const old = new Date(NOW.getTime() - 600_000)
+    await post(route(fakeStore([stats('rpc', 0n, 10_000n, old)]).store, rpcOnly, 0, log), intent)
+
+    expect(entries[0]).toMatchObject({ wasStale: true, dataAgeMs: 600_000 })
+  })
+
+  it('records nothing it did not advise', async () => {
+    const { log, entries } = fakeLog()
+    await post(route(fakeStore().store, rpcOnly, 0, log), { ...intent, mode: 'turbo' })
+    await post(route(fakeStore([]).store, rpcOnly, 0, log), intent)
+
+    expect(entries).toEqual([])
+  })
+
+  it('still answers when the record cannot be written', async () => {
+    const lines: string[] = []
+    const response = await recommendRoute({
+      store: fakeStore().store,
+      log: fakeLog(true).log,
+      groups: rpcOnly,
+      staleAfterMs: STALE_AFTER_MS,
+      logger: createLogger({ level: 'error', sink: (line) => lines.push(line) }),
+      cacheTtlMs: 0,
+      now: () => NOW,
+    }).request('/v1/recommend', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(intent),
+    })
+    await new Promise((resolve) => setImmediate(resolve))
+
+    expect(response.status).toBe(200)
+    expect(lines.some((line) => line.includes('advice not recorded'))).toBe(true)
+  })
+})
+
 describe('POST /v1/recommend in the assembled app', () => {
-  function app() {
+  function app(log: RecommendationLog = fakeLog().log) {
     return createApp({
       summary: {
         read: () => Promise.reject(new Error('the summary is not used in these tests')),
@@ -200,9 +285,10 @@ describe('POST /v1/recommend in the assembled app', () => {
         issue: () => Promise.reject(new Error('key issuance is not used in these tests')),
         recordUsage: () => Promise.reject(new Error('counters are not used in these tests')),
         revoke: () => Promise.reject(new Error('revocation is not used in these tests')),
-        findByHash: () => Promise.reject(new Error('key lookup is not used in these tests')),
+        findByHash: () => Promise.resolve({ id: 'key-1', revokedAt: null }),
       },
       bids: fakeStore().store,
+      advice: log,
       groups: [group('rpc'), group('jito')],
       staleAfterMs: STALE_AFTER_MS,
       rateLimitWithKeyPerMin: 120,
@@ -223,5 +309,12 @@ describe('POST /v1/recommend in the assembled app', () => {
 
     expect(statuses.slice(0, 10)).toEqual(Array(10).fill(200))
     expect(statuses[10]).toBe(429)
+  })
+
+  it('records whose key paid for the advice', async () => {
+    const { log, entries } = fakeLog()
+    await post(app(log), intent, { authorization: `Bearer ${generateKeyToken()}` })
+
+    expect(entries[0]?.keyId).toBe('key-1')
   })
 })

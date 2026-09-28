@@ -12,7 +12,7 @@ import { createApp } from './app.ts'
 import { createHealthStore } from './routes/health.ts'
 import { createHistoryStore } from './routes/history.ts'
 import { createKeyStore } from './routes/keys.ts'
-import { createBidStatsStore } from './routes/recommend.ts'
+import { createBidStatsStore, createRecommendationLog } from './routes/recommend.ts'
 import { createSummaryStore } from './routes/summary.ts'
 
 /**
@@ -44,6 +44,7 @@ async function main(): Promise<void> {
     history: createHistoryStore(db),
     keys: createKeyStore(db),
     bids: createBidStatsStore(db),
+    advice: createRecommendationLog(db),
     groups: registry.groups,
     staleAfterMs: staleAfterMs(config.sampleEveryN),
     rateLimitWithKeyPerMin: config.rateLimitWithKeyPerMin,

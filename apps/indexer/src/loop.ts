@@ -54,6 +54,14 @@ const DEFAULT_HEAD_MARGIN_SLOTS = 32
 const DEFAULT_ATTEMPTS = 3
 const DEFAULT_RETRY_DELAY_MS = 2000
 
+/**
+ * The longest pause between attempts to read the head. A provider that
+ * answers "max usage reached" stays that way for hours; asking every two
+ * seconds would only burn requests, while once a minute still resumes
+ * collection within a minute of the quota coming back.
+ */
+export const MAX_HEAD_BACKOFF_MS = 60_000
+
 const wait = (ms: number): Promise<void> =>
   new Promise((resolve) => {
     setTimeout(resolve, ms)
@@ -96,6 +104,42 @@ async function fetchBlock(slot: number, options: FetchOptions): Promise<Block> {
   }
 }
 
+export type ReadHeadOptions = {
+  readonly rpc: RpcClient
+  readonly logger: Logger
+  /** The first pause; each failure in a row doubles it, up to `MAX_HEAD_BACKOFF_MS`. */
+  readonly retryDelayMs: number
+  readonly signal?: AbortSignal | undefined
+  readonly sleep?: (ms: number) => Promise<void>
+}
+
+/**
+ * The confirmed head, asked for until the provider gives it — `null` only
+ * when the signal stops the wait.
+ *
+ * The head is the one read that has no slot to leave behind as a gap, so a
+ * failure here used to escape the loop and end collection for good, while
+ * the API around it kept answering: on 2026-09-28 an exhausted RPC quota
+ * stopped collection for ten hours, and nothing restarted it. Now the wait
+ * lasts as long as the outage does, and the lag on `/health` shows it.
+ */
+export async function readHead(options: ReadHeadOptions): Promise<number | null> {
+  const { rpc, logger, retryDelayMs, signal } = options
+  const sleep = options.sleep ?? wait
+
+  for (let failures = 0; signal?.aborted !== true; failures += 1) {
+    try {
+      return await rpc.getSlot()
+    } catch (cause) {
+      const delayMs = Math.min(retryDelayMs * 2 ** failures, MAX_HEAD_BACKOFF_MS)
+      logger.warn('head not read, waiting', { failures: failures + 1, delayMs, err: cause })
+      await sleep(delayMs)
+    }
+  }
+
+  return null
+}
+
 /**
  * Цикл читає **не кожен слот, а кожен `sampleEveryN`-й** (FR-001). Він нічого
  * не розбирає і нічого не зберігає: усе, що він знає, — який слот читати далі
@@ -120,13 +164,21 @@ export async function runSlotLoop(options: SlotLoopOptions): Promise<void> {
   const retryDelayMs = options.retryDelayMs ?? DEFAULT_RETRY_DELAY_MS
   const sleep = options.sleep ?? wait
 
-  const head = await rpc.getSlot()
-  let cursor = options.startSlot ?? nextSampleSlot(head, sampleEveryN)
+  const head = (): Promise<number | null> =>
+    readHead({ rpc, logger, retryDelayMs: pollIntervalMs, signal, sleep })
 
-  logger.info('цикл слотів запущено', { head, cursor, sampleEveryN, headMarginSlots })
+  let cursor = options.startSlot
+  if (cursor === undefined) {
+    const start = await head()
+    if (start === null) return
+    cursor = nextSampleSlot(start, sampleEveryN)
+  }
+
+  logger.info('цикл слотів запущено', { cursor, sampleEveryN, headMarginSlots })
 
   while (signal?.aborted !== true) {
-    const confirmed = await rpc.getSlot()
+    const confirmed = await head()
+    if (confirmed === null) break
 
     if (cursor + headMarginSlots > confirmed) {
       await sleep(pollIntervalMs)

@@ -8,7 +8,7 @@ import {
   type Logger,
 } from '@fairlane/shared'
 import { createGapStore, detectRestartGap, healGaps, type HealGapsOptions } from './gaps.ts'
-import { nextSampleSlot, runSlotLoop, type SlotHandler } from './loop.ts'
+import { nextSampleSlot, readHead, runSlotLoop, type SlotHandler } from './loop.ts'
 import { parseBlock } from './parse.ts'
 import { createLandingStore, persistLandings, type LandingStore } from './persist.ts'
 import { createSlotRefStore, recordSlotRef, type SlotRefStore } from './reference.ts'
@@ -100,6 +100,9 @@ export async function runMaintenance(options: MaintenanceOptions): Promise<void>
   await runRetention({ store: retention, logger, ...(now ? { now } : {}) })
 }
 
+/** The first pause before asking for the head again, as in the slot loop. */
+const HEAD_RETRY_DELAY_MS = 2_000
+
 /** Година: згортка працює завершеними годинами, частіше за них їй нема чого робити. */
 export const MAINTENANCE_INTERVAL_MS = 3_600_000
 
@@ -176,7 +179,11 @@ export async function runIndexer(options: RunIndexerOptions): Promise<void> {
     // зупинився минулого разу: доганяти простій усередині циклу означало б
     // відставати від голови тим більше, чим довшим той простій був. Пропущене
     // стає прогалиною і дочитується окремо, у своєму темпі (FR-009).
-    const startSlot = nextSampleSlot(await rpc.getSlot(), config.sampleEveryN)
+    // Started with the provider down, collection waits for it rather than
+    // ending before it began.
+    const head = await readHead({ rpc, logger, retryDelayMs: HEAD_RETRY_DELAY_MS, signal })
+    if (head === null) return
+    const startSlot = nextSampleSlot(head, config.sampleEveryN)
     const restart = detectRestartGap(
       await gapStore.lastObservedSlot(),
       startSlot,

@@ -1,7 +1,13 @@
 import type { Block, RpcClient } from '@fairlane/shared'
 import { BlockNotAvailableError, createLogger, SlotSkippedError } from '@fairlane/shared'
 import { describe, expect, it, vi } from 'vitest'
-import { nextSampleSlot, runSlotLoop, type SlotFailure } from './loop.ts'
+import {
+  MAX_HEAD_BACKOFF_MS,
+  nextSampleSlot,
+  readHead,
+  runSlotLoop,
+  type SlotFailure,
+} from './loop.ts'
 
 const silent = createLogger({ level: 'fatal', sink: () => {} })
 
@@ -340,5 +346,133 @@ describe('runSlotLoop', () => {
     })
 
     expect(rpc.requested).toEqual([])
+  })
+})
+
+/** An RPC whose `getSlot` fails the given number of times first, then answers `head`. */
+function flakyHead(failures: number, head = 1_000): RpcClient & { readonly asked: () => number } {
+  let asked = 0
+
+  return {
+    asked: () => asked,
+    getSlot: () => {
+      asked += 1
+      return asked <= failures
+        ? Promise.reject(new Error('429 max usage reached'))
+        : Promise.resolve(head)
+    },
+    getBlock: (slot: number) => Promise.resolve(block(slot)),
+  }
+}
+
+describe('readHead', () => {
+  it('keeps asking until the provider answers', async () => {
+    const rpc = flakyHead(3)
+
+    const head = await readHead({
+      rpc,
+      logger: silent,
+      retryDelayMs: 10,
+      sleep: () => Promise.resolve(),
+    })
+
+    expect(head).toBe(1_000)
+    expect(rpc.asked()).toBe(4)
+  })
+
+  it('doubles the pause after each failure, up to the ceiling', async () => {
+    const pauses: number[] = []
+
+    await readHead({
+      rpc: flakyHead(10),
+      logger: silent,
+      retryDelayMs: 2_000,
+      sleep: (ms) => {
+        pauses.push(ms)
+        return Promise.resolve()
+      },
+    })
+
+    expect(pauses.slice(0, 6)).toEqual([2_000, 4_000, 8_000, 16_000, 32_000, MAX_HEAD_BACKOFF_MS])
+    expect(Math.max(...pauses)).toBe(MAX_HEAD_BACKOFF_MS)
+  })
+
+  it('gives up only when the signal stops it', async () => {
+    const controller = new AbortController()
+    let pauses = 0
+
+    const head = await readHead({
+      rpc: flakyHead(Number.POSITIVE_INFINITY),
+      logger: silent,
+      retryDelayMs: 10,
+      signal: controller.signal,
+      sleep: () => {
+        pauses += 1
+        if (pauses === 5) controller.abort()
+        return Promise.resolve()
+      },
+    })
+
+    expect(head).toBeNull()
+  })
+})
+
+describe('runSlotLoop when the head cannot be read', () => {
+  // 2026-09-28: the provider answered "max usage reached", the loop's own
+  // `getSlot` threw, and collection ended for ten hours with the API still up.
+  it('outlives a head that fails mid-run and resumes where it was', async () => {
+    let asked = 0
+    const rpc: RpcClient = {
+      getSlot: () => {
+        asked += 1
+        return asked >= 2 && asked <= 4
+          ? Promise.reject(new Error('429 max usage reached'))
+          : Promise.resolve(1_000)
+      },
+      getBlock: (slot: number) => Promise.resolve(block(slot)),
+    }
+    const { controller, seen, onSlot } = stopAfter(3)
+
+    await expect(
+      runSlotLoop({
+        rpc,
+        logger: silent,
+        onSlot,
+        sampleEveryN: 100,
+        startSlot: 100,
+        signal: controller.signal,
+        sleep: () => Promise.resolve(),
+      }),
+    ).resolves.toBeUndefined()
+
+    expect(seen).toEqual([100, 200, 300])
+    expect(asked).toBeGreaterThan(4)
+  })
+
+  it('waits for the head at start instead of failing to start', async () => {
+    // Two failures, then a head of 1 050 to start from; after that the chain
+    // has moved to 1 200, so the first grid slot, 1 100, can be read.
+    let asked = 0
+    const rpc: RpcClient = {
+      getSlot: () => {
+        asked += 1
+        if (asked <= 2) return Promise.reject(new Error('429 max usage reached'))
+        return Promise.resolve(asked === 3 ? 1_050 : 1_200)
+      },
+      getBlock: (slot: number) => Promise.resolve(block(slot)),
+    }
+    const { controller, seen, onSlot } = stopAfter(1)
+
+    await runSlotLoop({
+      rpc,
+      logger: silent,
+      onSlot,
+      sampleEveryN: 100,
+      headMarginSlots: 0,
+      signal: controller.signal,
+      sleep: () => Promise.resolve(),
+    })
+
+    expect(seen).toEqual([1_100])
   })
 })

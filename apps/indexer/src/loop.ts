@@ -28,7 +28,10 @@ export type SlotLoopOptions = {
   readonly sampleEveryN: number
   /** Перший слот вибірки. За замовчуванням — наступний після поточної голови. */
   readonly startSlot?: number
-  /** Пауза, коли всі доступні слоти вибірки вже оглянуті. */
+  /**
+   * The shortest pause while waiting for the next sample slot; the pause
+   * itself is sized to the slots still missing (`headWaitMs`).
+   */
   readonly pollIntervalMs?: number
   /** Наскільки триматись позаду голови, перш ніж просити блок. */
   readonly headMarginSlots?: number
@@ -53,6 +56,26 @@ const DEFAULT_HEAD_MARGIN_SLOTS = 32
 
 const DEFAULT_ATTEMPTS = 3
 const DEFAULT_RETRY_DELAY_MS = 2000
+
+/** A slot's nominal length. The chain drifts from it; the next read of the head corrects that. */
+export const NOMINAL_SLOT_MS = 400
+
+/** The longest wait for the chain to reach the next sample slot. */
+export const MAX_HEAD_WAIT_MS = 60_000
+
+/**
+ * How long to wait for the head to cover `slotsMissing` more slots.
+ *
+ * The loop used to ask for the head every two seconds while waiting, about
+ * twenty reads per sample slot at a step of 100 — 93 % of all RPC credits
+ * spent (2026-09-28: ~41 000 a day against a free quota of 1 M a month).
+ * Sleeping for the missing slots makes it one read, and at most a couple
+ * more when the chain runs slower than nominal: a short remainder waits the
+ * floor, never less.
+ */
+export function headWaitMs(slotsMissing: number, floorMs: number): number {
+  return Math.min(Math.max(slotsMissing * NOMINAL_SLOT_MS, floorMs), MAX_HEAD_WAIT_MS)
+}
 
 /**
  * The longest pause between attempts to read the head. A provider that
@@ -180,8 +203,9 @@ export async function runSlotLoop(options: SlotLoopOptions): Promise<void> {
     const confirmed = await head()
     if (confirmed === null) break
 
-    if (cursor + headMarginSlots > confirmed) {
-      await sleep(pollIntervalMs)
+    const slotsMissing = cursor + headMarginSlots - confirmed
+    if (slotsMissing > 0) {
+      await sleep(headWaitMs(slotsMissing, pollIntervalMs))
       continue
     }
 

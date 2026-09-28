@@ -2,7 +2,10 @@ import type { Block, RpcClient } from '@fairlane/shared'
 import { BlockNotAvailableError, createLogger, SlotSkippedError } from '@fairlane/shared'
 import { describe, expect, it, vi } from 'vitest'
 import {
+  headWaitMs,
   MAX_HEAD_BACKOFF_MS,
+  MAX_HEAD_WAIT_MS,
+  NOMINAL_SLOT_MS,
   nextSampleSlot,
   readHead,
   runSlotLoop,
@@ -474,5 +477,84 @@ describe('runSlotLoop when the head cannot be read', () => {
     })
 
     expect(seen).toEqual([1_100])
+  })
+})
+
+describe('headWaitMs', () => {
+  it('sleeps for the slots still missing', () => {
+    expect(headWaitMs(82, 2_000)).toBe(82 * NOMINAL_SLOT_MS)
+  })
+
+  it('never waits less than the floor, nor more than the ceiling', () => {
+    expect(headWaitMs(1, 2_000)).toBe(2_000)
+    expect(headWaitMs(10_000, 2_000)).toBe(MAX_HEAD_WAIT_MS)
+  })
+})
+
+describe('runSlotLoop and the RPC budget', () => {
+  /**
+   * A chain on a virtual clock: `sleep` moves time, `getSlot` reads the slot
+   * it has reached. `slotMs` longer than nominal is a chain running slow.
+   */
+  function chainOnClock(slotMs: number) {
+    let now = 0
+    let heads = 0
+
+    const rpc: RpcClient = {
+      getSlot: () => {
+        heads += 1
+        return Promise.resolve(Math.floor(now / slotMs))
+      },
+      getBlock: (slot: number) => Promise.resolve(block(slot)),
+    }
+    const sleep = (ms: number) => {
+      now += ms
+      return Promise.resolve()
+    }
+
+    return { rpc, sleep, heads: () => heads, elapsedMs: () => now }
+  }
+
+  // Nominal: one read finds the slot 100 short, the sleep covers it, one more
+  // read confirms. A slow chain leaves a remainder after each sleep and pays
+  // a read or two to close it — still a fifth of the twenty it used to be.
+  it.each([
+    ['on nominal slots', NOMINAL_SLOT_MS, 2],
+    ['on a chain running 15 % slow', 460, 4],
+  ])('reads the head a few times per sample slot, not twenty, %s', async (_, slotMs, reads) => {
+    const chain = chainOnClock(slotMs)
+    const { controller, seen, onSlot } = stopAfter(20)
+
+    await runSlotLoop({
+      rpc: chain.rpc,
+      logger: silent,
+      onSlot,
+      sampleEveryN: 100,
+      startSlot: 100,
+      signal: controller.signal,
+      sleep: chain.sleep,
+    })
+
+    expect(seen).toHaveLength(20)
+    expect(chain.heads() / seen.length).toBeLessThanOrEqual(reads)
+  })
+
+  it('still reads each sample slot within a few seconds of the margin', async () => {
+    const chain = chainOnClock(NOMINAL_SLOT_MS)
+    const { controller, onSlot } = stopAfter(10)
+
+    await runSlotLoop({
+      rpc: chain.rpc,
+      logger: silent,
+      onSlot,
+      sampleEveryN: 100,
+      startSlot: 100,
+      signal: controller.signal,
+      sleep: chain.sleep,
+    })
+
+    // Slot 1 000 plus the 32-slot margin is reachable at 13.2 s past slot 1 000's time.
+    const earliestMs = (1_000 + 32) * NOMINAL_SLOT_MS
+    expect(chain.elapsedMs() - earliestMs).toBeLessThanOrEqual(2_000)
   })
 })

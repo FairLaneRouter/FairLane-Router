@@ -1,5 +1,8 @@
 import { z } from 'zod'
 import { isSolanaAddress } from './base58.ts'
+import { registryIdSchema } from './registryId.ts'
+
+export { registryIdSchema }
 
 /**
  * Канал, до якого потрапляє транзакція без чайових жодній відомій групі, але з
@@ -13,7 +16,6 @@ const ENDPOINT_ENV_KEY = /^CHANNEL_[A-Z0-9]+(?:_[A-Z0-9]+)*_ENDPOINT$/
 const addressSchema = z
   .string()
   .refine(isSolanaAddress, 'не адреса Solana: base58 має розкодуватись у 32 байти')
-export const registryIdSchema = z.string().regex(/^[a-z0-9-]+$/, 'ідентифікатор — тільки [a-z0-9-]')
 
 export const groupDefinitionSchema = z.object({
   id: registryIdSchema,

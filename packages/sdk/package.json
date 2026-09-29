@@ -1,13 +1,55 @@
 {
-  "name": "@fairlane/sdk",
-  "version": "0.0.0",
-  "private": true,
+  "name": "@fairlanerouter/sdk",
+  "version": "0.1.0",
+  "description": "Which Solana delivery channel lands your transaction cheapest right now — advice from what actually landed.",
+  "license": "MIT",
   "type": "module",
+  "keywords": [
+    "solana",
+    "priority-fee",
+    "jito",
+    "transaction",
+    "tips",
+    "sdk"
+  ],
+  "homepage": "https://github.com/FairLaneRouter/FairLane-Router/tree/main/packages/sdk#readme",
+  "bugs": "https://github.com/FairLaneRouter/FairLane-Router/issues",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/FairLaneRouter/FairLane-Router.git",
+    "directory": "packages/sdk"
+  },
+  "engines": {
+    "node": ">=20.3"
+  },
+  "sideEffects": false,
   "main": "./src/index.ts",
-  "exports": { ".": "./src/index.ts" },
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "main": "./dist/sdk/src/index.js",
+    "types": "./dist/sdk/src/index.d.ts",
+    "exports": {
+      ".": {
+        "types": "./dist/sdk/src/index.d.ts",
+        "default": "./dist/sdk/src/index.js"
+      }
+    }
+  },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.build.json",
+    "prepack": "tsc -p tsconfig.build.json",
     "test": "vitest run --passWithNoTests",
     "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "zod": "^4.4.3"
   }
 }

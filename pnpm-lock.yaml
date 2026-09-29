@@ -101,7 +101,11 @@ importers:
         specifier: ^0.31.10
         version: 0.31.10
 
-  packages/sdk: {}
+  packages/sdk:
+    dependencies:
+      zod:
+        specifier: ^4.4.3
+        version: 4.4.3
 
   packages/shared:
     dependencies:

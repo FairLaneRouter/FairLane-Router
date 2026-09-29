@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { isSolanaAddress } from './base58.ts'
-import { registryIdSchema } from './channels.ts'
+import { registryIdSchema } from './registryId.ts'
 
 /**
  * The contract of `POST /v1/recommend` (FR-016, FR-017, FR-018, FR-020,

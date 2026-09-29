@@ -1,4 +1,7 @@
 import { z } from 'zod'
+import { KEY_BYTES, KEY_PREFIX, keyTokenSchema } from './keyToken.ts'
+
+export { KEY_BYTES, KEY_PREFIX, KEY_TOKEN_LENGTH, keyTokenSchema } from './keyToken.ts'
 
 /**
  * Ключі доступу (FR-021, FR-046).
@@ -8,12 +11,6 @@ import { z } from 'zod'
  * весь «вхід» — це порівняння двох хешів, і бібліотеці автентифікації тут не
  * було б чого робити.
  */
-
-/** Префікс у самому токені. Видно в логах і чужому коді, чий це ключ і що це не адреса. */
-export const KEY_PREFIX = 'flr_'
-
-/** 256 біт випадковості. Менше — і токен стає вгадуваним перебором на нашому ж ліміті. */
-export const KEY_BYTES = 32
 
 /**
  * Шістнадцятковий запис, а не base58 і не base64url. Токен нікому не
@@ -25,18 +22,6 @@ export const KEY_BYTES = 32
 function toHex(bytes: Uint8Array): string {
   return Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('')
 }
-
-/** Довжина токена цілком: префікс плюс два символи на байт. */
-export const KEY_TOKEN_LENGTH = KEY_PREFIX.length + KEY_BYTES * 2
-
-const keyTokenPattern = new RegExp(`^${KEY_PREFIX}[0-9a-f]{${KEY_BYTES * 2}}$`)
-
-/**
- * Форма токена. Схема потрібна не для безпеки — невірний токен однаково не
- * знайдеться за хешем, — а щоб відрізнити «ключ не той» від «це взагалі не
- * ключ» і сказати про це різними відповідями (T040).
- */
-export const keyTokenSchema = z.string().regex(keyTokenPattern)
 
 export type RandomBytes = (size: number) => Uint8Array
 

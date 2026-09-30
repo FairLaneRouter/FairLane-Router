@@ -4,15 +4,18 @@ What it really costs to land a transaction on Solana through each delivery
 service — Jito, Nozomi, bloXroute, plain RPC — measured on-chain, normalised
 against the same slot, and put side by side on a public dashboard.
 
-**Status: M1 — transparency core.** The indexer, the API and the *Board* view
-run on live mainnet data. The *Side by side*, *Who pays the rent* and *Method*
-views still show synthetic data and are labelled as such on screen.
-Recommendations, the SDK and paired comparisons are later milestones (see
-[Roadmap](#roadmap)).
+**Status: M2 — recommendation.** The indexer, the API and the *Board* view
+run on live mainnet data, and `POST /v1/recommend` advises a channel group and
+a bid from the last hour of landings — over HTTP or through the
+[`@fairlanerouter/sdk`](packages/sdk/README.md) package. The *Side by side*,
+*Who pays the rent* and *Method* views still show synthetic data and are
+labelled as such on screen. Sending through the recommended channel and paired
+comparisons are later milestones (see [Roadmap](#roadmap)).
 
 **Live:** dashboard — <https://fairlanerouter.github.io/FairLane-Router/> ·
 API — <https://fairlane-api.onrender.com> (`/health`, `/v1/summary`,
-`/v1/history`, `/v1/summary/stream`). The API runs on a free plan and sleeps
+`/v1/history`, `/v1/summary/stream`, `POST /v1/recommend`, `POST /v1/keys`).
+The API runs on a free plan and sleeps
 after 15 minutes without traffic, so the first request after a quiet spell can
 take about a minute.
 
@@ -99,6 +102,8 @@ sampling, so it measures the slot, not what was kept.
                       GET /v1/summary/stream   (SSE, one event per new slot)
                       GET /v1/history?hours=24 (hourly overpay series)
                       GET /health              (indexer lag and open gaps)
+                      POST /v1/recommend       (group and bid for an intent)
+                      POST /v1/keys · DELETE /v1/keys/:id (access keys)
                     │
                     ▼
    apps/web (React + Vite) ── the board
@@ -121,18 +126,24 @@ without a database or network.
   would make the platform restart the wrong process.
 - All public routes allow any origin; there is nothing behind them that a
   key would protect.
+- `POST /v1/recommend` is rate-limited: 120 requests per minute with an access
+  key, 10 per source address without one. The summary, the stream, history and
+  health are not limited. Keys are issued by `POST /v1/keys` with no account and
+  no personal data; only their hash is stored, and revoking one keeps its usage
+  counters. The request, the answer and the errors are described in
+  [`packages/sdk/README.md`](packages/sdk/README.md).
 
 ## Repository layout
 
 ```
 apps/
   indexer/     long-running collector: loop, parse, reference, persist, rollup, retention, gaps
-  api/         Hono server: summary, stream, history, health
+  api/         Hono server: summary, stream, history, health, recommend, keys
   web/         React dashboard (Vite, Tailwind)
 packages/
   shared/      pure domain logic + Zod contracts: cost, attribution, reference, summary, channels
   db/          Drizzle schema, migrations, pgbouncer-aware client
-  sdk/         placeholder until M2
+  sdk/         @fairlanerouter/sdk, the npm package — advice mode
 scripts/
   calibrate.ts       measures getBlock size and slot composition on mainnet
   measure-sc001.ts   landing-to-summary latency on a deployed API
@@ -189,17 +200,19 @@ read from `DEMO_WALLET_SECRET` and used in one module.
 
 ## Success criteria and how they are measured
 
-The spec defines twelve measurable criteria. M1 covers five of them; the rest
-become measurable only when the system sends its own transactions (M3) or has
-accumulated history (M4).
+The spec defines twelve measurable criteria. M1 covers five of them and M2
+adds two; the rest become measurable only when the system sends its own
+transactions (M3) or has accumulated history (M4).
 
 | Criterion | Budget | Measured by |
 |---|---|---|
 | SC-001 landing visible in the public summary after confirmation (p95) | ≤ 60 s | `scripts/measure-sc001.ts` against the deployed API |
 | SC-002 first screen shows data on a 3G connection | < 2 s | `scripts/measure-sc002.ts` (Chrome DevTools “Fast 3G” profile) |
 | SC-003 correct channel group | ≥ 99 % | manual check on 100 landings in M1; full 500-landing control set in M3 |
+| SC-004 answer to a recommendation request (p95) | < 300 ms | 100 keyed requests against the deployed API, four intents in turn |
 | SC-007 storage at 48 h of landings + 90 d of hourly aggregates | < 400 MB | table sizes after retention runs |
 | SC-008 collection stays within the RPC free tier | 30 days | provider usage after 30 days of continuous collection |
+| SC-012 issuing an access key, with no personal data | < 10 s | `POST /v1/keys` with an empty body against the deployed API |
 
 Measured values are recorded in the release notes of each tag. A criterion
 that is not met is recorded as not met, not removed.
@@ -216,8 +229,8 @@ that is not met is recorded as not met, not removed.
 
 | Milestone | Delivers |
 |---|---|
-| **M1** — transparency core (this release) | indexer, database, `GET /v1/summary` + SSE, live board, methodology |
-| **M2** — recommendation | `POST /v1/recommend`, self-service access keys with counters, `packages/sdk` in advisory mode |
+| **M1** — transparency core | indexer, database, `GET /v1/summary` + SSE, live board, methodology |
+| **M2** — recommendation (this release) | `POST /v1/recommend`, self-service access keys with counters, `packages/sdk` in advisory mode |
 | **M3** — proof side by side | send mode in the SDK, project demo wallet with a daily budget, paired comparison, split-screen view |
 | **M4** — memory | per-address report on two data tiers, daily and monthly overpay dynamics |
 

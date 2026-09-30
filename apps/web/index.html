@@ -3,21 +3,22 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" href="/favicon.png" type="image/png" sizes="32x32" />
 
     <!--
-      Запит до API стартує звідси, а не з React, і це найдорожчий важіль
-      першого екрана. До цього ланцюг був послідовним: HTML → стилі → бандл
-      (86 КБ) → виконання → лише тоді fetch. На 3G перший запит ішов на
-      1.7 секунді, і сторінка бачила дані аж на 2.5-й. Тут він іде першим
-      рядком документа, паралельно з усім іншим.
+      The API request starts here, not from React, and it is the most
+      valuable lever on the first screen. Before, the chain was serial: HTML →
+      styles → bundle (86 KB) → execution → only then fetch. On 3G the first
+      request left at 1.7 s and the page saw data only at 2.5 s. Here it goes
+      out with the first lines of the document, in parallel with everything else.
 
-      Адреса вшивається на збірці: Vite підставляє `%VITE_API_URL%` у HTML
-      так само, як `import.meta.env` у код. Порожнє значення означає той
-      самий домен — тоді `base` порожній і шлях лишається відносним.
+      The address is baked in at build time: Vite substitutes `%VITE_API_URL%`
+      in HTML just as it does `import.meta.env` in code. An empty value means
+      the same domain — `base` is then empty and the path stays relative.
 
-      Обіцянка зберігається з уже приглушеною відмовою: бандл прийде за
-      секунду й повісить власний обробник, а браузер устиг би до того часу
-      оголосити її «unhandled» і написати помилку в консоль.
+      The promise is kept with its rejection already silenced: the bundle
+      arrives a second later and attaches its own handler, and by then the
+      browser would have declared it "unhandled" and logged an error.
     -->
     <script>
       ;(() => {
@@ -37,11 +38,11 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 
     <!--
-      Шрифти не блокують показ. Стилі з чужого домену затримували CSSOM на
-      1.2 с, а разом із ним і виконання модуля — скрипти чекають на стилі.
-      `media="print"` знімає їх із критичного шляху, `onload` вмикає назад.
-      Ціна — коротка мить системним шрифтом; вона дешевша за таблицю, якої
-      ще немає.
+      Fonts do not block rendering. Styles from another domain held the CSSOM
+      back by 1.2 s, and module execution with it — scripts wait for styles.
+      `media="print"` takes them off the critical path, `onload` switches them
+      back on. The price is a brief moment in a system font; it is cheaper
+      than a table that is not there yet.
     -->
     <link
       href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap"

@@ -1,0 +1,651 @@
+/* FairLane Router landing — a motorway at night with a live lane-price gantry.
+   Pure black is the logo's own field, so the mark sits on it without a seam.
+   Amber means a live reading and nothing else; red means overpay and nothing else. */
+
+:root {
+  --road: #000000;
+  --asphalt: #101113;
+  --marking: #f4f4f0;
+  --text: #c9cbcf;
+  --muted: #8a8e95;
+  --rule: #2a2c30;
+  --amber: #ffb020;
+  --overpay: #e0605a;
+  --dash: rgba(244, 244, 240, 0.3);
+  --wrap: 1200px;
+  --gutter: 24px;
+  --lane-pad: 28px;
+  --section-gap: 160px;
+  --display: "Barlow Condensed", "Arial Narrow", "Roboto Condensed", "Segoe UI", sans-serif;
+  --mono: ui-monospace, "Cascadia Mono", "SF Mono", Menlo, Consolas, monospace;
+  --sans: ui-sans-serif, system-ui, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  color-scheme: dark;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+}
+
+body {
+  margin: 0;
+  background: var(--road);
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 17px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+
+img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+a {
+  color: var(--marking);
+  text-underline-offset: 3px;
+}
+
+a:hover {
+  color: var(--amber);
+}
+
+a:focus-visible,
+.button:focus-visible {
+  outline: 2px solid var(--amber);
+  outline-offset: 3px;
+}
+
+h1,
+h2,
+h3,
+p,
+ol,
+ul,
+dl,
+dd,
+figure {
+  margin: 0;
+}
+
+ol,
+ul {
+  padding: 0;
+  list-style: none;
+}
+
+.display {
+  font-family: var(--display);
+  font-weight: 700;
+  color: var(--marking);
+  letter-spacing: 0.005em;
+}
+
+.mono,
+code {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.amber {
+  color: var(--amber);
+}
+
+.wrap {
+  width: min(var(--wrap), 100% - 2 * var(--gutter));
+  margin-inline: auto;
+}
+
+/* Lane markings: 24px dash, 16px gap, as on the road. */
+.dashed-left {
+  background-image: repeating-linear-gradient(to bottom, var(--dash) 0 24px, transparent 24px 40px);
+  background-size: 2px 100%;
+  background-repeat: no-repeat;
+}
+
+.dashed-top {
+  background-image: repeating-linear-gradient(to right, var(--dash) 0 24px, transparent 24px 40px);
+  background-size: 100% 2px;
+  background-repeat: no-repeat;
+}
+
+/* Four-lane grid: every section below the hero snaps to it. */
+.lanes-4 {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.lanes-4 > .cell {
+  padding-inline: var(--lane-pad);
+  background-image: repeating-linear-gradient(to bottom, var(--dash) 0 24px, transparent 24px 40px);
+  background-size: 2px 100%;
+  background-repeat: no-repeat;
+}
+
+.lanes-4 > .cell:last-child {
+  padding-right: 0;
+}
+
+.lanes-4 > :first-child:not(.cell) {
+  padding-right: 32px;
+}
+
+.lanes-4 > .cell:first-child {
+  padding-left: 0;
+  background-image: none;
+}
+
+.span-3 {
+  grid-column: 2 / span 3;
+}
+
+/* Nav */
+
+.nav {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 24px;
+  padding-block: 32px;
+}
+
+.brand {
+  font-size: 26px;
+  letter-spacing: 0.02em;
+  text-decoration: none;
+}
+
+.nav-links {
+  display: flex;
+  gap: 32px;
+  font-size: 14px;
+}
+
+/* Hero */
+
+.hero {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  padding-block: 56px 64px;
+}
+
+.hero-copy {
+  grid-column: 1 / span 3;
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+  padding-right: 48px;
+}
+
+.eyebrow {
+  font-size: 14px;
+  color: var(--muted);
+}
+
+.hero h1 {
+  font-size: clamp(40px, 5.6vw, 80px);
+  line-height: 0.98;
+  text-wrap: balance;
+}
+
+.lede {
+  max-width: 680px;
+  font-size: 20px;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px 32px;
+  align-items: center;
+  margin-top: 8px;
+}
+
+.button {
+  display: inline-flex;
+  align-items: center;
+  min-height: 52px;
+  padding: 0 28px;
+  background: var(--marking);
+  color: var(--road);
+  font-size: 24px;
+  letter-spacing: 0.02em;
+  text-decoration: none;
+}
+
+.button:hover {
+  background: var(--amber);
+  color: var(--road);
+}
+
+.install {
+  font-size: 15px;
+  color: var(--marking);
+  padding: 14px 18px;
+  background: var(--asphalt);
+  user-select: all;
+}
+
+.hero-mark {
+  display: flex;
+  justify-content: center;
+  align-items: flex-end;
+}
+
+.hero-mark img {
+  width: 260px;
+}
+
+/* Gantry */
+
+.beam {
+  height: 14px;
+  background: var(--rule);
+}
+
+.gantry {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  background: var(--asphalt);
+  border-bottom: 1px solid var(--rule);
+  min-height: 236px;
+}
+
+.lane {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 24px 24px 28px;
+}
+
+.lane + .lane,
+.road span + span {
+  background-image: repeating-linear-gradient(to bottom, var(--dash) 0 24px, transparent 24px 40px);
+  background-size: 2px 100%;
+  background-repeat: no-repeat;
+}
+
+.lane-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.lane-name {
+  font-size: 30px;
+  letter-spacing: 0.06em;
+}
+
+.lane-meta {
+  font-size: 12px;
+  color: var(--muted);
+  text-align: right;
+}
+
+.reading {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.reading .label {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.reading .value {
+  line-height: 1.1;
+}
+
+.value.amber {
+  color: var(--amber);
+}
+
+.value.big {
+  font-size: 36px;
+}
+
+.value.big small {
+  font-size: 14px;
+}
+
+.value.overpay {
+  font-size: 24px;
+  color: var(--overpay);
+}
+
+.closed {
+  flex-grow: 1;
+  display: flex;
+  align-items: center;
+  border: 1px solid var(--rule);
+  padding: 16px;
+  font-size: 20px;
+  line-height: 1.15;
+  color: var(--muted);
+  letter-spacing: 0.04em;
+}
+
+.road {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  height: 120px;
+}
+
+.caption {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 8px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.caption a {
+  color: var(--muted);
+}
+
+/* Sections */
+
+.section {
+  padding-top: var(--section-gap);
+}
+
+.section > h2,
+.lanes-4 > h2 {
+  font-size: 44px;
+  line-height: 1.02;
+}
+
+.section > h2 {
+  margin-bottom: 48px;
+}
+
+.cell h3 {
+  font-size: 28px;
+  line-height: 1.1;
+}
+
+.cell > * + * {
+  margin-top: 14px;
+}
+
+.figure {
+  font-size: 40px;
+  line-height: 1;
+  color: var(--marking);
+}
+
+.steps {
+  padding-top: 40px;
+}
+
+.step-no {
+  display: block;
+  font-size: 64px;
+  line-height: 1;
+  color: var(--rule);
+}
+
+/* Measured */
+
+.table-scroll {
+  overflow-x: auto;
+}
+
+.measured {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 15px;
+}
+
+.measured th,
+.measured td {
+  padding: 16px 0;
+  border-bottom: 1px solid var(--rule);
+  text-align: right;
+  vertical-align: baseline;
+}
+
+.measured thead th {
+  padding-top: 0;
+  padding-bottom: 12px;
+  font-weight: 400;
+  color: var(--muted);
+}
+
+.measured thead th:first-child,
+.measured tbody th {
+  text-align: left;
+}
+
+.measured tbody th {
+  padding-right: 16px;
+  font-family: var(--sans);
+  font-weight: 400;
+}
+
+.measured td + td,
+.measured th + th {
+  padding-left: 16px;
+}
+
+.measured td {
+  white-space: nowrap;
+}
+
+.measured .value {
+  color: var(--marking);
+}
+
+.measured .date {
+  color: var(--muted);
+}
+
+.note {
+  margin-top: 16px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.shot {
+  margin-top: 48px;
+}
+
+.shot img {
+  width: 100%;
+  border: 1px solid var(--rule);
+}
+
+.shot figcaption {
+  margin-top: 12px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+/* Limits */
+
+.limits {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.limits li {
+  padding: 28px 40px 28px 0;
+  background-image: repeating-linear-gradient(to right, var(--dash) 0 24px, transparent 24px 40px);
+  background-size: 100% 2px;
+  background-repeat: no-repeat;
+}
+
+.limits li:nth-child(even) {
+  padding: 28px 0 28px 40px;
+  background-image:
+    repeating-linear-gradient(to right, var(--dash) 0 24px, transparent 24px 40px),
+    repeating-linear-gradient(to bottom, var(--dash) 0 24px, transparent 24px 40px);
+  background-size: 100% 2px, 2px 100%;
+}
+
+.limits strong {
+  color: var(--marking);
+}
+
+/* FAQ */
+
+.faq > div {
+  padding-block: 28px;
+}
+
+.faq dt {
+  font-size: 26px;
+  line-height: 1.1;
+  padding-right: 28px;
+}
+
+/* Footer */
+
+.footer {
+  margin-top: var(--section-gap);
+  padding-block: 40px 64px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 24px;
+}
+
+.footer-brand {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  font-size: 22px;
+  letter-spacing: 0.02em;
+}
+
+.footer-brand img {
+  width: 48px;
+}
+
+.footer-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 28px;
+  font-size: 14px;
+}
+
+/* Narrow screens: the lanes stack into rows and the markings turn horizontal. */
+
+@media (max-width: 900px) {
+  :root {
+    --section-gap: 104px;
+  }
+
+  .nav-links {
+    display: none;
+  }
+
+  .hero {
+    grid-template-columns: 1fr;
+    padding-top: 24px;
+  }
+
+  .hero-copy {
+    grid-column: 1;
+    padding-right: 0;
+  }
+
+  .hero-mark {
+    display: none;
+  }
+
+  .lede {
+    font-size: 18px;
+  }
+
+  .gantry,
+  .lanes-4,
+  .limits {
+    grid-template-columns: 1fr;
+  }
+
+  .lane + .lane,
+  .lanes-4 > .cell,
+  .limits li,
+  .limits li:nth-child(even) {
+    background-image: repeating-linear-gradient(to right, var(--dash) 0 24px, transparent 24px 40px);
+    background-size: 100% 2px;
+    background-repeat: no-repeat;
+  }
+
+  .lanes-4 > .cell,
+  .limits li,
+  .limits li:nth-child(even) {
+    padding: 28px 0;
+  }
+
+  .lanes-4 > h2 {
+    margin-bottom: 20px;
+  }
+
+  .lanes-4 > .cell:first-child {
+    background-image: none;
+    padding-top: 0;
+  }
+
+  .span-3 {
+    grid-column: 1;
+  }
+
+  .road {
+    height: 48px;
+  }
+
+  .section > h2,
+  .lanes-4 > h2 {
+    font-size: 34px;
+  }
+
+  .faq dt {
+    padding-right: 0;
+    margin-bottom: 12px;
+  }
+
+  /* The dates stay one link away, in the release notes under the table. */
+  .measured .date,
+  .measured thead th:last-child {
+    display: none;
+  }
+
+  .faq dd.cell {
+    padding: 0;
+    background-image: none;
+  }
+
+  .footer {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}

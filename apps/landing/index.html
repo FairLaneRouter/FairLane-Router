@@ -1,0 +1,289 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>FairLane Router — what Solana delivery really costs</title>
+  <meta name="description" content="Jito, Nozomi, bloXroute and plain RPC, measured on mainnet against the same slot and put side by side. A live board, an advice API and an SDK.">
+  <meta name="theme-color" content="#000000">
+  <meta name="color-scheme" content="dark">
+  <link rel="canonical" href="https://fairlanerouter.github.io/FairLane-Router/">
+  <link rel="icon" href="assets/favicon.png" type="image/png" sizes="32x32">
+  <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="FairLane Router">
+  <meta property="og:title" content="FairLane Router — what Solana delivery really costs">
+  <meta property="og:description" content="Jito, Nozomi, bloXroute and plain RPC, measured on mainnet against the same slot and put side by side.">
+  <meta property="og:url" content="https://fairlanerouter.github.io/FairLane-Router/">
+  <meta property="og:image" content="https://fairlanerouter.github.io/FairLane-Router/assets/og.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="FairLane Router: what landing a Solana transaction really costs, lane by lane">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="FairLane Router — what Solana delivery really costs">
+  <meta name="twitter:description" content="Jito, Nozomi, bloXroute and plain RPC, measured on mainnet against the same slot and put side by side.">
+  <meta name="twitter:image" content="https://fairlanerouter.github.io/FairLane-Router/assets/og.png">
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&amp;display=swap">
+  <link rel="preconnect" href="https://fairlane-api.onrender.com" crossorigin>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<header class="wrap nav">
+  <a href="./" class="display brand">FAIRLANE ROUTER</a>
+  <nav class="mono nav-links" aria-label="Sections">
+    <a href="#how">How it works</a>
+    <a href="#measured">Measured</a>
+    <a href="#limits">What it does not do</a>
+    <a href="https://github.com/FairLaneRouter/FairLane-Router">GitHub</a>
+  </nav>
+</header>
+
+<main>
+
+<section class="wrap hero">
+  <div class="hero-copy">
+    <p class="mono eyebrow">Solana · transaction delivery</p>
+    <h1 class="display">What it really costs to land a Solana transaction — lane by lane.</h1>
+    <p class="lede">Jito, Nozomi, bloXroute and plain RPC each charge for delivery in their own way. FairLane measures what each one actually took on mainnet, against the same slot, and puts the numbers side by side.</p>
+    <div class="actions">
+      <a class="display button" href="app/">Open the live board</a>
+      <code class="mono install">npm install @fairlanerouter/sdk</code>
+    </div>
+  </div>
+  <div class="hero-mark">
+    <img src="assets/mark.webp" width="260" height="509" alt="FairLane Router mark: a lane of light converging into an arrow">
+  </div>
+</section>
+
+<section class="wrap gantry-block" aria-labelledby="gantry-title">
+  <h2 id="gantry-title" class="visually-hidden">Live lane prices, last hour</h2>
+  <div class="beam" aria-hidden="true"></div>
+  <ol class="gantry" id="gantry" aria-live="polite">
+    <li class="lane" data-group="jito"><span class="display lane-name">JITO</span></li>
+    <li class="lane" data-group="nozomi"><span class="display lane-name">NOZOMI</span></li>
+    <li class="lane" data-group="bloxroute"><span class="display lane-name">BLOXROUTE</span></li>
+    <li class="lane" data-group="rpc"><span class="display lane-name">PLAIN RPC</span></li>
+  </ol>
+  <div class="road" aria-hidden="true"><span></span><span></span><span></span><span></span></div>
+  <div class="mono caption">
+    <p id="gantry-status">Reading the last hour…</p>
+    <p>Which lane to take for <em>your</em> transaction is a question with an intent — <a href="https://github.com/FairLaneRouter/FairLane-Router/tree/main/packages/sdk#readme">ask the API</a>.</p>
+  </div>
+</section>
+
+<section class="wrap section lanes-4">
+  <h2 class="display">What it does</h2>
+  <div class="cell">
+    <p class="mono figure">17.8 s</p>
+    <h3 class="display">The board</h3>
+    <p>Every sampled mainnet slot, attributed to a delivery group and priced against that slot's reference. A landing shows up on the public board 17.8 s after confirmation (p95).</p>
+  </div>
+  <div class="cell">
+    <p class="mono figure">186 ms</p>
+    <h3 class="display">Advice</h3>
+    <p>Describe a transaction before it exists — program, compute units, cheap or fast — and get back a group, a tip, a priority fee and the full expected cost, with the age of the data behind it. 186 ms p95.</p>
+  </div>
+  <div class="cell">
+    <p class="mono figure">1.54 s</p>
+    <h3 class="display">Keys without accounts</h3>
+    <p>One request issues an access key: no sign-up, no e-mail, no personal data. 120 requests a minute with a key, 10 without.</p>
+  </div>
+</section>
+
+<section class="wrap section" id="how">
+  <h2 class="display">How it works</h2>
+  <ol class="steps lanes-4 dashed-top">
+    <li class="cell">
+      <span class="display step-no" aria-hidden="true">01</span>
+      <h3 class="display">Sample</h3>
+      <p>Every 100th mainnet slot is read in full. Each successful non-vote transaction in it is a landing, with its base fee, priority fee and tip — a failed transaction did not land, and a vote pays nothing for delivery.</p>
+    </li>
+    <li class="cell">
+      <span class="display step-no" aria-hidden="true">02</span>
+      <h3 class="display">Attribute</h3>
+      <p>A tip to a service's own accounts names its group. Services that share accounts cannot be told apart on-chain, so they form one group — the unit of every comparison.</p>
+    </li>
+    <li class="cell">
+      <span class="display step-no" aria-hidden="true">03</span>
+      <h3 class="display">Reference</h3>
+      <p>Each slot gets one reference: the 10th percentile of full landing cost among its successful non-vote transactions, computed only when the slot has at least 50 of them. Vote transactions are always excluded — they would pull the reference to almost zero.</p>
+    </li>
+    <li class="cell">
+      <span class="display step-no" aria-hidden="true">04</span>
+      <h3 class="display">Overpay</h3>
+      <p>Overpay is what a landing cost above its slot's reference. Comparing overpay, not tips, keeps a busy slot from looking like an expensive service.</p>
+    </li>
+  </ol>
+</section>
+
+<section class="wrap section" id="measured">
+  <div class="lanes-4">
+    <h2 class="display">Measured on the deployed product</h2>
+    <div class="cell span-3">
+      <div class="table-scroll">
+        <table class="mono measured">
+          <thead>
+            <tr><th scope="col">Criterion</th><th scope="col">Budget</th><th scope="col">Measured</th><th scope="col">Date</th></tr>
+          </thead>
+          <tbody>
+            <tr><th scope="row">Landing visible on the board after confirmation (p95)</th><td>≤ 60 s</td><td class="value">17.8 s</td><td class="date">2026-09-22</td></tr>
+            <tr><th scope="row">First screen with data on a 3G connection</th><td>&lt; 2 s</td><td class="value">1.76 s</td><td class="date">2026-09-22</td></tr>
+            <tr><th scope="row">Answer to an advice request (p95)</th><td>&lt; 300 ms</td><td class="value">186 ms</td><td class="date">2026-09-28</td></tr>
+            <tr><th scope="row">Issuing an access key, no personal data</th><td>&lt; 10 s</td><td class="value">1.54 s</td><td class="date">2026-09-24</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="mono note">Measured values are recorded in the release notes of each tag: <a href="https://github.com/FairLaneRouter/FairLane-Router/releases/tag/v0.1.0">v0.1.0</a>, <a href="https://github.com/FairLaneRouter/FairLane-Router/releases/tag/v0.2.0">v0.2.0</a>.</p>
+    </div>
+  </div>
+  <figure class="shot">
+    <a href="app/"><img src="assets/board.webp" width="1200" height="750" loading="lazy" alt="The FairLane board: channel groups on a logarithmic cost axis, each with its range, median and overpay over the slot reference"></a>
+    <figcaption class="mono">The Board view, live mainnet data. The other views still show labelled synthetic data.</figcaption>
+  </figure>
+</section>
+
+<section class="wrap section" id="limits">
+  <h2 class="display">What FairLane does not do — yet, or ever</h2>
+  <ul class="limits">
+    <li><strong>It has not proven savings yet.</strong> Advice nobody followed saves nothing. The claim that the recommended lane is cheaper needs FairLane's own paired sends — that is the next milestone, and until then this page does not make it.</li>
+    <li><strong>It does not estimate landing probability yet.</strong> Passive collection sees what landed, not when it was sent, so the field is <code class="mono">null</code> rather than a number that only looks like a probability.</li>
+    <li><strong>It does not name a brand inside a group.</strong> Services that share on-chain accounts are indistinguishable, and FairLane does not guess.</li>
+    <li><strong>It sees more lanes than it can send through.</strong> Some groups are observed only; when one of them is cheaper, the advice says so instead of hiding it.</li>
+    <li><strong>It does not send, sign or hold anything of yours.</strong> No custody, no user keys, no on-chain program.</li>
+    <li><strong>No MEV protection, no SLA.</strong> Only the price of delivery is measured, and advice is an estimate, not a guarantee.</li>
+    <li><strong>Not every landing is attributed.</strong> The unattributed share is counted and shown under the gantry, never folded into a group.</li>
+  </ul>
+</section>
+
+<section class="wrap section" id="faq">
+  <h2 class="display">Questions</h2>
+  <dl class="faq">
+    <div class="lanes-4 dashed-top">
+      <dt class="display">Why groups and not services?</dt>
+      <dd class="cell span-3">Services that tip into the same on-chain accounts are one lane as far as the chain can tell. FairLane compares what it can prove, and never splits a group by guessing.</dd>
+    </div>
+    <div class="lanes-4 dashed-top">
+      <dt class="display">Why the 10th percentile?</dt>
+      <dd class="cell span-3">It is what landing in that slot cost someone who did not overpay: a few freakishly cheap landings do not move it, and the overpay of the majority does not become the norm. Votes are left out — they are most of a block and pay only the base fee, so with them every lamport of delivery would count as overpay.</dd>
+    </div>
+    <div class="lanes-4 dashed-top">
+      <dt class="display">Does it cost anything?</dt>
+      <dd class="cell span-3">The board, the API and the SDK are open. Advice is rate limited: 10 requests a minute without a key, 120 with one.</dd>
+    </div>
+    <div class="lanes-4 dashed-top">
+      <dt class="display">How is it computed, exactly?</dt>
+      <dd class="cell span-3">The <a href="app/">method</a> view of the board describes how the reference and overpay are computed. Its worked examples are labelled synthetic.</dd>
+    </div>
+    <div class="lanes-4 dashed-top">
+      <dt class="display">Is my transaction sent anywhere?</dt>
+      <dd class="cell span-3">No. The SDK gives advice only: it never builds, signs or sends a transaction, and depends on no Solana library.</dd>
+    </div>
+  </dl>
+</section>
+
+</main>
+
+<footer class="wrap footer dashed-top">
+  <div class="footer-brand">
+    <img src="assets/mark.webp" width="48" height="94" alt="">
+    <span class="display">FAIRLANE ROUTER</span>
+  </div>
+  <nav class="mono footer-links" aria-label="Project">
+    <a href="app/">Live board</a>
+    <a href="https://fairlane-api.onrender.com/health">API</a>
+    <a href="https://www.npmjs.com/package/@fairlanerouter/sdk">SDK on npm</a>
+    <a href="https://github.com/FairLaneRouter/FairLane-Router">GitHub</a>
+    <a href="https://github.com/FairLaneRouter/FairLane-Router/blob/main/LICENSE">MIT licence</a>
+  </nav>
+</footer>
+
+<script>
+  // Reads the last hour once and sets the gantry. Nothing is baked into the
+  // markup as if it were live: until the answer comes the signs stay dark, and
+  // on any failure they stay dark with a link to the board. POST /v1/recommend
+  // is never called from here: it is rate limited and every answer it gives is
+  // stored to be checked against landings, so a page view would pollute that log.
+  (function () {
+    var API = 'https://fairlane-api.onrender.com/v1/summary?window=1h';
+    var status = document.getElementById('gantry-status');
+    var nf = new Intl.NumberFormat('en-US').format;
+    var group = function (n) { return nf(n).replace(/,/g, ' '); };
+
+    function el(tag, cls, text) {
+      var node = document.createElement(tag);
+      if (cls) node.className = cls;
+      if (text !== undefined) node.textContent = text;
+      return node;
+    }
+
+    function figure(label, value, cls) {
+      var box = el('div', 'reading');
+      box.appendChild(el('span', 'label', label));
+      box.appendChild(value);
+      value.className = 'mono value ' + cls;
+      return box;
+    }
+
+    function fill(lane, g) {
+      var head = el('div', 'lane-head');
+      head.appendChild(lane.querySelector('.lane-name'));
+      var side = g.isSendable === false ? 'observed only'
+        : typeof g.landings === 'number' ? group(g.landings) + ' landings' : '';
+      head.appendChild(el('span', 'mono lane-meta', side));
+      lane.textContent = '';
+      lane.appendChild(head);
+
+      if (!g.sufficientData || typeof g.costP50 !== 'number' || typeof g.overpayP50 !== 'number') {
+        lane.appendChild(el('p', 'display closed', 'NOT ENOUGH LANDINGS THIS HOUR'));
+        return;
+      }
+      var cost = el('span', 'mono');
+      cost.appendChild(document.createTextNode(group(g.costP50) + ' '));
+      cost.appendChild(el('small', '', 'lamports'));
+      lane.appendChild(figure('median full cost', cost, 'amber big'));
+      var sign = g.overpayP50 < 0 ? '−' : '+';
+      lane.appendChild(figure('median overpay over slot reference',
+        el('span', 'mono', sign + group(Math.abs(g.overpayP50))), 'overpay'));
+    }
+
+    function unreachable() {
+      status.textContent = 'The live API did not answer. ';
+      var a = el('a', '', 'Open the board');
+      a.href = 'app/';
+      status.appendChild(a);
+    }
+
+    fetch(API, { signal: AbortSignal.timeout ? AbortSignal.timeout(20000) : undefined })
+      .then(function (r) { if (!r.ok) throw new Error(String(r.status)); return r.json(); })
+      .then(function (d) {
+        if (!d || !Array.isArray(d.groups)) throw new Error('shape');
+        var byId = {};
+        d.groups.forEach(function (g) { byId[g.groupId] = g; });
+        document.querySelectorAll('#gantry .lane').forEach(function (lane) {
+          var g = byId[lane.getAttribute('data-group')];
+          if (g) fill(lane, g);
+        });
+        var at = new Date(d.generatedAt);
+        var time = at.toISOString().slice(11, 16) + ' UTC';
+        status.textContent = 'Last hour · read ';
+        status.appendChild(el('span', 'amber', time));
+        var parts = ' · ' + group(d.landings) + ' landings in ' + group(d.slotsSampled) + ' sampled slots';
+        if (d.unattributed && typeof d.unattributed.share === 'number') {
+          parts += ' · ' + Math.round(d.unattributed.share * 100) + ' % of landings unattributed';
+        }
+        if (d.isStale && typeof d.dataAgeMs === 'number') {
+          parts += ' · data is ' + Math.round(d.dataAgeMs / 60000) + ' min old';
+        }
+        status.appendChild(document.createTextNode(parts));
+        document.getElementById('gantry').classList.add('is-read');
+      })
+      .catch(unreachable);
+  })();
+</script>
+</body>
+</html>

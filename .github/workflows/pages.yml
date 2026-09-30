@@ -1,10 +1,12 @@
-# Дашборд на GitHub Pages. Збирається на кожен push у main і публікується
-# через Actions — окремої гілки gh-pages немає. Власник один раз вмикає
-# Settings → Pages → Source = GitHub Actions; без цього крок deploy падає з 404.
+# The landing page and the dashboard on GitHub Pages, as one artifact: the
+# static landing (apps/landing) at the site root, the dashboard under /app/.
+# Built on every push to main and published through Actions — there is no
+# gh-pages branch. The owner once sets Settings → Pages → Source = GitHub
+# Actions; without it the deploy step fails with 404.
 #
-# Змінні збірки — Settings → Secrets and variables → Actions → Variables:
-#   VITE_API_URL     публічна адреса API (вшивається в бандл, секретом не є)
-#   PAGES_BASE_PATH  лише для власного домену: "/" замість "/<репо>/"
+# Build variables — Settings → Secrets and variables → Actions → Variables:
+#   VITE_API_URL     public address of the API (baked into the bundle, not a secret)
+#   PAGES_BASE_PATH  custom domain only: "/app/" instead of "/<repo>/app/"
 name: pages
 
 on:
@@ -12,6 +14,7 @@ on:
     branches: [main]
     paths:
       - apps/web/**
+      - apps/landing/**
       - packages/shared/**
       - pnpm-lock.yaml
       - .github/workflows/pages.yml
@@ -38,20 +41,27 @@ jobs:
           node-version-file: .nvmrc
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      # Порожня адреса API означала б «той самий домен» — на Pages це 404 на
-      # кожен запит і сторінка «no data». Краще впасти на збірці, з поясненням.
+      # An empty API address would mean "the same domain" — on Pages that is a
+      # 404 on every request and a "no data" screen. Better to fail the build
+      # and say why.
       - run: |
           if [ -z "${{ vars.VITE_API_URL }}" ]; then
-            echo "::error::Змінна репозиторію VITE_API_URL не задана (Settings → Secrets and variables → Actions → Variables)"
+            echo "::error::Repository variable VITE_API_URL is not set (Settings → Secrets and variables → Actions → Variables)"
             exit 1
           fi
       - run: pnpm --filter @fairlane/web build
         env:
-          BASE_PATH: ${{ vars.PAGES_BASE_PATH || format('/{0}/', github.event.repository.name) }}
+          BASE_PATH: ${{ vars.PAGES_BASE_PATH || format('/{0}/app/', github.event.repository.name) }}
           VITE_API_URL: ${{ vars.VITE_API_URL }}
+      # The dashboard has no router — its views are state, not addresses — so
+      # nothing below /app/ needs a 404 fallback.
+      - run: |
+          mkdir -p _site
+          cp -r apps/landing/. _site/
+          cp -r apps/web/dist _site/app
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: apps/web/dist
+          path: _site
 
   deploy:
     needs: build

@@ -4,9 +4,10 @@ import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vite'
 
 /**
- * Коренем сторінки на GitHub Pages є `/<назва-репо>/`, а не `/`: без цього
- * бандл шукає `/assets/…` у корені домену й отримує 404. Значення приходить із
- * workflow (`BASE_PATH`), у розробці й на власному домені лишається `/`.
+ * On GitHub Pages the app lives under `/<repo-name>/app/`, below the landing
+ * page at the site root; without the prefix the bundle asks for `/assets/…` at
+ * the domain root and gets 404. The value comes from the workflow
+ * (`BASE_PATH`); in development it stays `/`.
  */
 const base = process.env.BASE_PATH ?? '/'
 

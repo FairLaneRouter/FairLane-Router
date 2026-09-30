@@ -12,7 +12,8 @@ a bid from the last hour of landings — over HTTP or through the
 labelled as such on screen. Sending through the recommended channel and paired
 comparisons are later milestones (see [Roadmap](#roadmap)).
 
-**Live:** dashboard — <https://fairlanerouter.github.io/FairLane-Router/> ·
+**Live:** site — <https://fairlanerouter.github.io/FairLane-Router/> ·
+dashboard — <https://fairlanerouter.github.io/FairLane-Router/app/> ·
 API — <https://fairlane-api.onrender.com> (`/health`, `/v1/summary`,
 `/v1/history`, `/v1/summary/stream`, `POST /v1/recommend`, `POST /v1/keys`).
 The API runs on a free plan and sleeps
@@ -140,6 +141,7 @@ apps/
   indexer/     long-running collector: loop, parse, reference, persist, rollup, retention, gaps
   api/         Hono server: summary, stream, history, health, recommend, keys
   web/         React dashboard (Vite, Tailwind)
+  landing/     static landing page at the site root (no build step)
 packages/
   shared/      pure domain logic + Zod contracts: cost, attribution, reference, summary, channels
   db/          Drizzle schema, migrations, pgbouncer-aware client
@@ -192,11 +194,14 @@ read from `DEMO_WALLET_SECRET` and used in one module.
   covering the whole sleep, and `/health` reported `degraded` for days.
 - **Web → GitHub Pages**, built and published by
   `.github/workflows/pages.yml` on every push to `main` that touches the web
-  app. One-time setup: *Settings → Pages → Source: GitHub Actions*, and the
+  app or the landing page. One artifact holds both: the static landing page
+  (`apps/landing`, no build step) at the site root and the dashboard under
+  `app/`. One-time setup: *Settings → Pages → Source: GitHub Actions*, and the
   repository variable `VITE_API_URL` (*Settings → Secrets and variables →
   Actions → Variables*) pointing at the API's public URL — the build fails
-  loudly without it. The site lives under `/<repository-name>/`; for a custom
-  domain set the variable `PAGES_BASE_PATH` to `/`.
+  loudly without it. The site lives under `/<repository-name>/`, the dashboard
+  under `/<repository-name>/app/`; for a custom domain set the variable
+  `PAGES_BASE_PATH` to `/app/`.
 
 ## Success criteria and how they are measured
 

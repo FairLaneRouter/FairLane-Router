@@ -46,6 +46,41 @@ export function decodeBase58(value: string): Uint8Array | null {
   return Uint8Array.from(bytes.reverse())
 }
 
+/** The inverse of `decodeBase58`: the same carry loop, run from bytes to digits. */
+export function encodeBase58(bytes: Uint8Array): string {
+  const digits: number[] = []
+
+  for (const byte of bytes) {
+    let carry: number = byte
+
+    for (let i = 0; i < digits.length; i += 1) {
+      const value = (digits[i] ?? 0) * 256 + carry
+      digits[i] = value % 58
+      carry = Math.floor(value / 58)
+    }
+
+    while (carry > 0) {
+      digits.push(carry % 58)
+      carry = Math.floor(carry / 58)
+    }
+  }
+
+  // Zero bytes in front become ones, the mirror of the decoder's rule.
+  let leading = ''
+  for (const byte of bytes) {
+    if (byte !== 0) break
+    leading += '1'
+  }
+
+  return (
+    leading +
+    digits
+      .reverse()
+      .map((digit) => ALPHABET[digit])
+      .join('')
+  )
+}
+
 /**
  * A Solana address has no checksum, so its length is all there is to check.
  * A one-character typo passes, and does no harm: a service account that does

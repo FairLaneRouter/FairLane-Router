@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { ADDRESS_BYTES, decodeBase58, isSolanaAddress } from './base58.ts'
+import { ADDRESS_BYTES, decodeBase58, encodeBase58, isSolanaAddress } from './base58.ts'
 import { VOTE_PROGRAM_ID } from './cost.ts'
 
 const SYSTEM_PROGRAM_ID = '11111111111111111111111111111111'
@@ -40,5 +40,27 @@ describe('isSolanaAddress', () => {
   it('rejects a value that decodes to the wrong length', () => {
     expect(isSolanaAddress('2')).toBe(false)
     expect(isSolanaAddress(`${TOKEN_PROGRAM_ID}extra`)).toBe(false)
+  })
+})
+
+describe('encodeBase58', () => {
+  it('turns 32 zero bytes back into the system program id', () => {
+    expect(encodeBase58(new Uint8Array(ADDRESS_BYTES))).toBe(SYSTEM_PROGRAM_ID)
+  })
+
+  it('encodes small numbers the way base58 defines them', () => {
+    expect(encodeBase58(Uint8Array.of(0))).toBe('1')
+    expect(encodeBase58(Uint8Array.of(1))).toBe('2')
+    expect(encodeBase58(Uint8Array.of(58))).toBe('21')
+    expect(encodeBase58(new Uint8Array())).toBe('')
+  })
+
+  it('round-trips known addresses and keeps leading zero bytes', () => {
+    for (const address of [TOKEN_PROGRAM_ID, VOTE_PROGRAM_ID, SYSTEM_PROGRAM_ID]) {
+      const bytes = decodeBase58(address)
+      expect(bytes && encodeBase58(bytes)).toBe(address)
+    }
+    const padded = Uint8Array.of(0, 0, 7, 255, 1)
+    expect(decodeBase58(encodeBase58(padded))).toEqual(padded)
   })
 })

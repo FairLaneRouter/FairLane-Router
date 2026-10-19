@@ -152,6 +152,29 @@ describe('createRpcClient', () => {
     await expect(rpc.getBlock(1)).rejects.toBeInstanceOf(RpcError)
   })
 
+  it('returns a balance in lamports as a bigint', async () => {
+    const fetch = respond({ context: { slot: 341882103 }, value: 1_234_567_890 })
+    const rpc = createRpcClient({ url: 'https://rpc.example', fetch })
+
+    await expect(rpc.getBalance('Wallet1111')).resolves.toBe(1_234_567_890n)
+    const body = JSON.parse(String(fetch.mock.calls[0]?.[1]?.body))
+    expect(body.method).toBe('getBalance')
+    expect(body.params).toEqual(['Wallet1111', { commitment: 'confirmed' }])
+  })
+
+  // Past 2^53 JSON.parse has already rounded the number: passing it on as
+  // bigint would dress a rounded value up as an exact one.
+  it.each([
+    ['a balance JSON cannot carry exactly', { context: { slot: 1 }, value: 2 ** 53 }],
+    ['a negative balance', { context: { slot: 1 }, value: -1 }],
+    ['a fractional balance', { context: { slot: 1 }, value: 1.5 }],
+    ['a bare number without the context envelope', 1000],
+  ])('rejects %s', async (_, result) => {
+    const rpc = createRpcClient({ url: 'https://rpc.example', fetch: respond(result) })
+
+    await expect(rpc.getBalance('Wallet1111')).rejects.toBeInstanceOf(RpcError)
+  })
+
   it('falls back to the second url when the first one fails', async () => {
     const fetch = vi
       .fn()

@@ -160,7 +160,23 @@ export type RpcClient = {
   getBlock(slot: number): Promise<Block>
 }
 
-export function createRpcClient(options: RpcClientOptions): RpcClient {
+/**
+ * Apart from `RpcClient` on purpose: the indexer reads slots and never needs
+ * a balance, so its fakes don't have to grow one. The API's compare path does.
+ */
+export type BalanceRpc = {
+  /** Lamports held by `address` at `confirmed`. */
+  getBalance(address: string): Promise<bigint>
+}
+
+// Lamports come as a JSON number. A balance above 2^53 would already have lost
+// precision in JSON.parse; Zod 4's `.int()` admits safe integers only, so such
+// a value is refused rather than passed on rounded.
+const balanceSchema = z.object({
+  value: z.number().int().nonnegative(),
+})
+
+export function createRpcClient(options: RpcClientOptions): RpcClient & BalanceRpc {
   const urls = options.fallbackUrl ? [options.url, options.fallbackUrl] : [options.url]
   const doFetch = options.fetch ?? (globalThis.fetch as unknown as FetchLike)
   let id = 0
@@ -251,6 +267,13 @@ export function createRpcClient(options: RpcClientOptions): RpcClient {
         throw new RpcError(`getBlock(${slot}): відповідь не відповідає схемі блока`)
       }
       return parsed.data
+    },
+
+    async getBalance(address) {
+      const result = await call('getBalance', [address, { commitment: 'confirmed' }])
+      const parsed = balanceSchema.safeParse(result)
+      if (!parsed.success) throw new RpcError('getBalance: the result is not a lamport balance')
+      return BigInt(parsed.data.value)
     },
   }
 }

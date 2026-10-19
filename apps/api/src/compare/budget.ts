@@ -11,22 +11,31 @@ import { and, eq, gte, sql } from 'drizzle-orm'
  * and the check and the debit are one statement — Postgres holds the row lock
  * between them, so there is no window a parallel run could slip through.
  *
+ * What is reserved is always the per-run limit, never an amount the caller
+ * picks: the pair of transactions has to fit under it (T052), and the number
+ * of runs left (FR-037) is then exactly the number of reservations the day and
+ * the wallet still admit.
+ *
  * When the run is over, `settle` gives back what it did not spend. If the
  * process dies in between, the reservation simply stays: the budget errs on
  * the side of spending less, never more.
  */
 export type DemoBudget = {
+  /** The ceiling of one run — what a pair of transactions must fit under. */
+  readonly perRunLamports: bigint
   /**
-   * Takes `amountLamports` out of today's budget, or nothing at all.
-   * `undefined` means the day has no room for it (FR-036: the run must not start).
+   * Takes the per-run limit out of today's budget, or nothing at all.
+   * `undefined` means the day has no room for one more run (FR-036: the run
+   * must not start).
    */
-  reserve(amountLamports: bigint, at: Date): Promise<Reservation | undefined>
+  reserve(at: Date): Promise<Reservation | undefined>
   /**
    * Replaces the reservation with what the run really cost, on the day the
    * reservation was made — a run that crosses midnight is still yesterday's.
-   * Returns the day's spend after settling.
    */
-  settle(reservation: Reservation, actualLamports: bigint): Promise<bigint>
+  settle(reservation: Reservation, actualLamports: bigint): Promise<Settlement>
+  /** Today's spend, the wallet's balance and the runs both still allow (FR-037). */
+  status(at: Date): Promise<BudgetStatus>
 }
 
 export type Reservation = {
@@ -39,9 +48,48 @@ export type Reservation = {
   readonly runsCount: number
 }
 
+export type Settlement = {
+  /** The day's spend after settling. */
+  readonly spentLamports: bigint
+  /**
+   * The run cost more than its reservation. The money is spent all the same
+   * and is written as spent; this is the signal that the pair outgrew the
+   * per-run limit and the limit no longer bounds a run.
+   */
+  readonly overrun: boolean
+}
+
 export type BudgetLimits = {
   readonly dailyLamports: bigint
+  readonly perRunLamports: bigint
 }
+
+export type BudgetStatus = {
+  /** UTC day the status is for. */
+  readonly day: string
+  readonly dailyLamports: bigint
+  readonly perRunLamports: bigint
+  /** Spent and reserved today, runs in flight included. */
+  readonly spentLamports: bigint
+  /** `null` when the balance could not be read. */
+  readonly balanceLamports: bigint | null
+  /**
+   * The least number of runs that will still be let through. A lower bound:
+   * a run reserves the full per-run limit and usually spends a small part of
+   * it, so settling gives room back. `null` with an unknown balance — a count
+   * from the day alone could promise runs the wallet cannot pay for.
+   */
+  readonly runsLeft: number | null
+  /** What runs out first, `null` when `runsLeft` is. */
+  readonly limitedBy: 'day' | 'balance' | null
+}
+
+/**
+ * A fee payer must stay rent-exempt after every transaction it pays for, or
+ * the transaction fails: the minimum for an account with no data (890 880
+ * lamports, `getMinimumBalanceForRentExemption(0)`) is never spendable.
+ */
+export const RENT_EXEMPT_MINIMUM_LAMPORTS = 890_880n
 
 /** A caller's mistake, not an exhausted budget — those come back as `undefined`. */
 export class DemoBudgetError extends Error {
@@ -112,17 +160,59 @@ export function settleStatement(db: Database, input: SettleInput) {
     .returning({ spentLamports: demoBudget.spentLamports })
 }
 
-export function createDemoBudget(db: Database, limits: BudgetLimits): DemoBudget {
+export function spentStatement(db: Database, day: string) {
+  return db
+    .select({ spentLamports: demoBudget.spentLamports })
+    .from(demoBudget)
+    .where(eq(demoBudget.day, day))
+}
+
+type RunsLeftInput = {
+  readonly dailyLamports: bigint
+  readonly perRunLamports: bigint
+  readonly spentLamports: bigint
+  readonly balanceLamports: bigint
+}
+
+/**
+ * How many more runs the day and the wallet both admit. On a tie the wallet
+ * is named: an exhausted day comes back tomorrow, an empty wallet does not.
+ */
+export function runsLeft(input: RunsLeftInput): { runs: number; limitedBy: 'day' | 'balance' } {
+  const room = input.dailyLamports - input.spentLamports
+  const byDay = room > 0n ? room / input.perRunLamports : 0n
+  const spendable = input.balanceLamports - RENT_EXEMPT_MINIMUM_LAMPORTS
+  const byBalance = spendable > 0n ? spendable / input.perRunLamports : 0n
+
+  return byBalance <= byDay
+    ? { runs: Number(byBalance), limitedBy: 'balance' }
+    : { runs: Number(byDay), limitedBy: 'day' }
+}
+
+/**
+ * `readBalance` returns the demo wallet's lamports. It is the caller's
+ * wiring (the wallet's address and an RPC client), not the budget's: the
+ * budget keeps the ledger, the chain holds the money.
+ */
+export function createDemoBudget(
+  db: Database,
+  limits: BudgetLimits,
+  readBalance: () => Promise<bigint>,
+): DemoBudget {
   if (limits.dailyLamports < 0n) {
     throw new DemoBudgetError('the daily limit cannot be negative')
   }
+  if (limits.perRunLamports <= 0n) {
+    throw new DemoBudgetError('the per-run limit must be a positive number of lamports')
+  }
+
+  const amountLamports = limits.perRunLamports
 
   return {
-    async reserve(amountLamports, at) {
-      if (amountLamports <= 0n) {
-        throw new DemoBudgetError('a reservation must be a positive number of lamports')
-      }
-      // Not a race: both sides are constants of this call, not state.
+    perRunLamports: amountLamports,
+
+    async reserve(at) {
+      // Not a race: both sides are constants of this budget, not state.
       if (amountLamports > limits.dailyLamports) return undefined
 
       const day = budgetDay(at)
@@ -159,7 +249,40 @@ export function createDemoBudget(db: Database, limits: BudgetLimits): DemoBudget
         throw new DemoBudgetError(`no reservation of this size to settle on ${reservation.day}`)
       }
 
-      return row.spentLamports
+      return {
+        spentLamports: row.spentLamports,
+        overrun: actualLamports > reservation.reservedLamports,
+      }
+    },
+
+    async status(at) {
+      const day = budgetDay(at)
+      const [rows, balanceLamports] = await Promise.all([
+        spentStatement(db, day),
+        // A failed read is shown as an unknown balance, not as a broken page:
+        // the day's spend is still worth showing.
+        readBalance().catch(() => null),
+      ])
+      const spentLamports = rows[0]?.spentLamports ?? 0n
+      const left =
+        balanceLamports === null
+          ? null
+          : runsLeft({
+              dailyLamports: limits.dailyLamports,
+              perRunLamports: amountLamports,
+              spentLamports,
+              balanceLamports,
+            })
+
+      return {
+        day,
+        dailyLamports: limits.dailyLamports,
+        perRunLamports: amountLamports,
+        spentLamports,
+        balanceLamports,
+        runsLeft: left?.runs ?? null,
+        limitedBy: left?.limitedBy ?? null,
+      }
     },
   }
 }

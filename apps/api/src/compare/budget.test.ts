@@ -4,9 +4,12 @@ import {
   budgetDay,
   createDemoBudget,
   DemoBudgetError,
+  RENT_EXEMPT_MINIMUM_LAMPORTS,
   type Reservation,
   reserveStatement,
+  runsLeft,
   settleStatement,
+  spentStatement,
 } from './budget.ts'
 
 // Nothing listens on port 1: a call that reaches the database fails with a
@@ -83,25 +86,111 @@ describe('settleStatement', () => {
   })
 })
 
+
+describe('spentStatement', () => {
+  const query = spentStatement(handle.db, DAY).toSQL()
+
+  it('reads one day by its key and nothing else', () => {
+    expect(query.sql).toMatch(/^select "spent_lamports" from "demo_budget" where "demo_budget"\."day" = \$1$/i)
+    expect(query.params).toEqual([DAY])
+  })
+})
+
+describe('runsLeft', () => {
+  const limits = { dailyLamports: 50_000_000n, perRunLamports: 2_000_000n }
+  const rich = 10_000_000_000n
+
+  it('counts whole runs left in the day', () => {
+    expect(runsLeft({ ...limits, spentLamports: 0n, balanceLamports: rich })).toEqual({
+      runs: 25,
+      limitedBy: 'day',
+    })
+    expect(runsLeft({ ...limits, spentLamports: 47_000_001n, balanceLamports: rich })).toEqual({
+      runs: 1,
+      limitedBy: 'day',
+    })
+  })
+
+  it('is zero on a day spent past its limit, not negative', () => {
+    // settle writes an overrun as it happened, so spend above the limit is a
+    // state the ledger can be in.
+    expect(runsLeft({ ...limits, spentLamports: 50_000_005n, balanceLamports: rich })).toEqual({
+      runs: 0,
+      limitedBy: 'day',
+    })
+  })
+
+  it('never counts the rent-exempt minimum as spendable', () => {
+    const justEnough = RENT_EXEMPT_MINIMUM_LAMPORTS + 2_000_000n
+    expect(runsLeft({ ...limits, spentLamports: 0n, balanceLamports: justEnough })).toEqual({
+      runs: 1,
+      limitedBy: 'balance',
+    })
+    expect(runsLeft({ ...limits, spentLamports: 0n, balanceLamports: justEnough - 1n })).toEqual({
+      runs: 0,
+      limitedBy: 'balance',
+    })
+  })
+
+  it('is zero for a wallet below the rent-exempt minimum', () => {
+    expect(runsLeft({ ...limits, spentLamports: 0n, balanceLamports: 0n })).toEqual({
+      runs: 0,
+      limitedBy: 'balance',
+    })
+  })
+
+  it('names the wallet on a tie — an empty wallet does not refill at midnight', () => {
+    const tenRuns = RENT_EXEMPT_MINIMUM_LAMPORTS + 20_000_000n
+    expect(runsLeft({ ...limits, spentLamports: 30_000_000n, balanceLamports: tenRuns })).toEqual({
+      runs: 10,
+      limitedBy: 'balance',
+    })
+  })
+})
+
 describe('createDemoBudget', () => {
-  const budget = createDemoBudget(handle.db, { dailyLamports: 50_000_000n })
+  const limits = { dailyLamports: 50_000_000n, perRunLamports: 2_000_000n }
+  const balance = () => Promise.resolve(10_000_000_000n)
 
-  it('refuses an amount above the daily limit without asking the database', async () => {
-    await expect(budget.reserve(50_000_001n, AT)).resolves.toBeUndefined()
+  it('exposes the per-run ceiling a pair must fit under', () => {
+    expect(createDemoBudget(handle.db, limits, balance).perRunLamports).toBe(2_000_000n)
   })
 
-  it('reaches the database for an amount within the limit', async () => {
-    // The control for the test above: same budget, same handle, but this
-    // call does get to the dead port — so "resolves cleanly" there means
+  it('refuses a run whose ceiling is above the daily limit without asking the database', async () => {
+    const budget = createDemoBudget(
+      handle.db,
+      { dailyLamports: 1_999_999n, perRunLamports: 2_000_000n },
+      balance,
+    )
+    await expect(budget.reserve(AT)).resolves.toBeUndefined()
+  })
+
+  it('reaches the database when one run fits in the day', async () => {
+    // The control for the test above: same handle, ceiling equal to the day —
+    // this call does get to the dead port, so "resolves cleanly" there means
     // something.
-    await expect(budget.reserve(50_000_000n, AT)).rejects.not.toBeInstanceOf(DemoBudgetError)
+    const budget = createDemoBudget(
+      handle.db,
+      { dailyLamports: 2_000_000n, perRunLamports: 2_000_000n },
+      balance,
+    )
+    await expect(budget.reserve(AT)).rejects.not.toBeInstanceOf(DemoBudgetError)
   })
 
-  it.each([0n, -1n])('rejects a reservation of %s lamports', async (amount) => {
-    await expect(budget.reserve(amount, AT)).rejects.toBeInstanceOf(DemoBudgetError)
+  it.each([0n, -1n])('rejects a per-run limit of %s lamports', (perRunLamports) => {
+    expect(() => createDemoBudget(handle.db, { ...limits, perRunLamports }, balance)).toThrow(
+      DemoBudgetError,
+    )
+  })
+
+  it('rejects a negative daily limit', () => {
+    expect(() =>
+      createDemoBudget(handle.db, { ...limits, dailyLamports: -1n }, balance),
+    ).toThrow(DemoBudgetError)
   })
 
   it('rejects a negative cost', async () => {
+    const budget = createDemoBudget(handle.db, limits, balance)
     const reservation: Reservation = {
       day: DAY,
       reservedLamports: 2_000_000n,
@@ -109,9 +198,5 @@ describe('createDemoBudget', () => {
       runsCount: 1,
     }
     await expect(budget.settle(reservation, -1n)).rejects.toBeInstanceOf(DemoBudgetError)
-  })
-
-  it('rejects a negative daily limit', () => {
-    expect(() => createDemoBudget(handle.db, { dailyLamports: -1n })).toThrow(DemoBudgetError)
   })
 })

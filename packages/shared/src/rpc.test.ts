@@ -234,3 +234,106 @@ describe('endpointLabel', () => {
     expect(endpointLabel('not a url with abc')).toBe('rpc endpoint')
   })
 })
+
+describe('createRpcClient — sending and confirming', () => {
+  const bodyOf = (fetch: ReturnType<typeof respond>) =>
+    JSON.parse(String(fetch.mock.calls[0]?.[1]?.body))
+
+  it('sends the wire bytes as base64, without preflight', async () => {
+    const fetch = respond('5ig1')
+    const rpc = createRpcClient({ url: 'https://rpc.example', fetch })
+
+    await expect(rpc.sendTransaction(Uint8Array.from([1, 2, 250, 255]))).resolves.toBe('5ig1')
+    expect(bodyOf(fetch)).toMatchObject({
+      method: 'sendTransaction',
+      params: [
+        Buffer.from([1, 2, 250, 255]).toString('base64'),
+        { encoding: 'base64', skipPreflight: true },
+      ],
+    })
+  })
+
+  it('rejects a send answered with something other than a signature', async () => {
+    const rpc = createRpcClient({ url: 'https://rpc.example', fetch: respond({ bundle: 1 }) })
+
+    await expect(rpc.sendTransaction(Uint8Array.from([1]))).rejects.toBeInstanceOf(RpcError)
+  })
+
+  it('reads the latest blockhash at confirmed, with the slot it was read at', async () => {
+    const fetch = respond({
+      context: { slot: 412 },
+      value: { blockhash: 'Hash111', lastValidBlockHeight: 560 },
+    })
+    const rpc = createRpcClient({ url: 'https://rpc.example', fetch })
+
+    await expect(rpc.getLatestBlockhash()).resolves.toEqual({
+      blockhash: 'Hash111',
+      lastValidBlockHeight: 560,
+      slot: 412,
+    })
+    expect(bodyOf(fetch).params).toEqual([{ commitment: 'confirmed' }])
+  })
+
+  it('reads the block height at confirmed', async () => {
+    const fetch = respond(560)
+    const rpc = createRpcClient({ url: 'https://rpc.example', fetch })
+
+    await expect(rpc.getBlockHeight()).resolves.toBe(560)
+    expect(bodyOf(fetch)).toMatchObject({
+      method: 'getBlockHeight',
+      params: [{ commitment: 'confirmed' }],
+    })
+  })
+
+  it('returns one status per signature, null for one not seen', async () => {
+    const fetch = respond({
+      context: { slot: 9 },
+      value: [
+        { slot: 7, confirmations: 1, err: null, confirmationStatus: 'confirmed' },
+        null,
+        { slot: 8, confirmations: null, err: null, status: { Ok: null } },
+      ],
+    })
+    const rpc = createRpcClient({ url: 'https://rpc.example', fetch })
+
+    await expect(rpc.getSignatureStatuses(['a', 'b', 'c'])).resolves.toEqual([
+      { slot: 7, confirmationStatus: 'confirmed' },
+      null,
+      { slot: 8, confirmationStatus: null },
+    ])
+    expect(bodyOf(fetch).params).toEqual([['a', 'b', 'c'], { searchTransactionHistory: false }])
+  })
+
+  it('rejects statuses that do not line up with the signatures asked for', async () => {
+    const fetch = respond({ context: { slot: 9 }, value: [null] })
+    const rpc = createRpcClient({ url: 'https://rpc.example', fetch })
+
+    await expect(rpc.getSignatureStatuses(['a', 'b'])).rejects.toBeInstanceOf(RpcError)
+  })
+
+  it('reads a transaction back with its slot, or null while the node lacks it', async () => {
+    const tx = { slot: 77, ...block.transactions[0] }
+    const rpc = createRpcClient({ url: 'https://rpc.example', fetch: respond(tx) })
+    const missing = createRpcClient({ url: 'https://rpc.example', fetch: respond(null) })
+
+    await expect(rpc.getTransaction('sig1')).resolves.toMatchObject({
+      slot: 77,
+      meta: { fee: 9700 },
+    })
+    await expect(missing.getTransaction('sig1')).resolves.toBeNull()
+  })
+
+  it('passes a timeout signal only when one is asked for', async () => {
+    const timed = respond(1)
+    const plain = respond(1)
+    await createRpcClient({
+      url: 'https://rpc.example',
+      fetch: timed,
+      timeoutMs: 5_000,
+    }).getBlockHeight()
+    await createRpcClient({ url: 'https://rpc.example', fetch: plain }).getBlockHeight()
+
+    expect(timed.mock.calls[0]?.[1]?.signal).toBeInstanceOf(AbortSignal)
+    expect(plain.mock.calls[0]?.[1]).not.toHaveProperty('signal')
+  })
+})

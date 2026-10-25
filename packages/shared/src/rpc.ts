@@ -143,7 +143,10 @@ function describeFailure(cause: unknown, url: string): string {
   return text.split(url).join(endpointLabel(url))
 }
 
-export type FetchLike = (url: string, init: { method: string; headers: Record<string, string>; body: string }) => Promise<{
+export type FetchLike = (
+  url: string,
+  init: { method: string; headers: Record<string, string>; body: string; signal?: AbortSignal },
+) => Promise<{
   ok: boolean
   status: number
   json: () => Promise<unknown>
@@ -153,6 +156,12 @@ export type RpcClientOptions = {
   readonly url: string
   readonly fallbackUrl?: string | undefined
   readonly fetch?: FetchLike
+  /**
+   * Gives up on a request after this long. Without it a request waits as long
+   * as the platform's fetch does — minutes — which a loop that must notice a
+   * blockhash expiring cannot afford.
+   */
+  readonly timeoutMs?: number
 }
 
 export type RpcClient = {
@@ -176,7 +185,62 @@ const balanceSchema = z.object({
   value: z.number().int().nonnegative(),
 })
 
-export function createRpcClient(options: RpcClientOptions): RpcClient & BalanceRpc {
+/** Hands a signed transaction to one endpoint: a node, or a channel that speaks the same method. */
+export type SendRpc = {
+  /** The signature the endpoint answered with. */
+  sendTransaction(wire: Uint8Array): Promise<string>
+}
+
+export type LatestBlockhash = {
+  readonly blockhash: string
+  /** The last block height a transaction under this blockhash can land at. */
+  readonly lastValidBlockHeight: number
+  /** The slot the node answered at. */
+  readonly slot: number
+}
+
+export type SignatureStatus = {
+  readonly slot: number
+  readonly confirmationStatus: 'processed' | 'confirmed' | 'finalized' | null
+}
+
+/** A transaction read back by signature: the block shape, plus the slot it landed in. */
+export type FetchedTransaction = BlockTransaction & { readonly slot: number }
+
+/** What following a sent transaction to its end needs (T053). */
+export type ConfirmRpc = {
+  getLatestBlockhash(): Promise<LatestBlockhash>
+  /** Block height at `confirmed`. */
+  getBlockHeight(): Promise<number>
+  /** One entry per signature, in order; `null` for one the node has not seen. */
+  getSignatureStatuses(signatures: readonly string[]): Promise<readonly (SignatureStatus | null)[]>
+  /** `null` while the node does not have it — also briefly after its status says it landed. */
+  getTransaction(signature: string): Promise<FetchedTransaction | null>
+}
+
+const slotSchema = z.number().int().nonnegative()
+
+const latestBlockhashSchema = z.object({
+  context: z.object({ slot: slotSchema }),
+  value: z.object({ blockhash: z.string().min(1), lastValidBlockHeight: slotSchema }),
+})
+
+const signatureStatusesSchema = z.object({
+  value: z.array(
+    z
+      .object({
+        slot: slotSchema,
+        confirmationStatus: z.enum(['processed', 'confirmed', 'finalized']).nullable().optional(),
+      })
+      .nullable(),
+  ),
+})
+
+const fetchedTransactionSchema = transactionSchema.extend({ slot: slotSchema }).nullable()
+
+export function createRpcClient(
+  options: RpcClientOptions,
+): RpcClient & BalanceRpc & SendRpc & ConfirmRpc {
   const urls = options.fallbackUrl ? [options.url, options.fallbackUrl] : [options.url]
   const doFetch = options.fetch ?? (globalThis.fetch as unknown as FetchLike)
   let id = 0
@@ -192,6 +256,9 @@ export function createRpcClient(options: RpcClientOptions): RpcClient & BalanceR
           method: 'POST',
           headers: { 'content-type': 'application/json' },
           body,
+          ...(options.timeoutMs === undefined
+            ? {}
+            : { signal: AbortSignal.timeout(options.timeoutMs) }),
         })
         if (!response.ok) {
           failures.push(`${endpointLabel(url)}: HTTP ${response.status}`)
@@ -274,6 +341,71 @@ export function createRpcClient(options: RpcClientOptions): RpcClient & BalanceR
       const parsed = balanceSchema.safeParse(result)
       if (!parsed.success) throw new RpcError('getBalance: the result is not a lamport balance')
       return BigInt(parsed.data.value)
+    },
+
+    // No preflight: the transaction is ours and known to run, and a simulation
+    // would only delay the one leg whose endpoint does it. `maxRetries` is left
+    // to the node — its own rebroadcast is part of what the channel is.
+    async sendTransaction(wire) {
+      const result = await call('sendTransaction', [
+        // `btoa`, not `Buffer`: this module is in the web bundle too. A wire
+        // transaction is at most 1232 bytes, well within one spread.
+        btoa(String.fromCharCode(...wire)),
+        { encoding: 'base64', skipPreflight: true },
+      ])
+      const parsed = z.string().min(1).safeParse(result)
+      if (!parsed.success) throw new RpcError('sendTransaction: the result is not a signature')
+      return parsed.data
+    },
+
+    // `confirmed`, not the default `finalized`: a finalized blockhash is ~32
+    // slots old already, and that is time cut off the window both legs share.
+    async getLatestBlockhash() {
+      const result = await call('getLatestBlockhash', [{ commitment: 'confirmed' }])
+      const parsed = latestBlockhashSchema.safeParse(result)
+      if (!parsed.success) throw new RpcError('getLatestBlockhash: the result is not a blockhash')
+      return { ...parsed.data.value, slot: parsed.data.context.slot }
+    },
+
+    async getBlockHeight() {
+      const result = await call('getBlockHeight', [{ commitment: 'confirmed' }])
+      const parsed = slotSchema.safeParse(result)
+      if (!parsed.success) throw new RpcError('getBlockHeight: the result is not a block height')
+      return parsed.data
+    },
+
+    // Recent statuses only: a run follows transactions under a blockhash that
+    // is at most ~150 blocks old, well inside the node's status cache.
+    async getSignatureStatuses(signatures) {
+      const result = await call('getSignatureStatuses', [
+        [...signatures],
+        { searchTransactionHistory: false },
+      ])
+      const parsed = signatureStatusesSchema.safeParse(result)
+      if (!parsed.success || parsed.data.value.length !== signatures.length) {
+        throw new RpcError('getSignatureStatuses: the result is not one status per signature')
+      }
+      return parsed.data.value.map((status) =>
+        status === null
+          ? null
+          : { slot: status.slot, confirmationStatus: status.confirmationStatus ?? null },
+      )
+    },
+
+    async getTransaction(signature) {
+      const result = await call('getTransaction', [
+        signature,
+        {
+          encoding: 'json',
+          commitment: 'confirmed',
+          maxSupportedTransactionVersion: MAX_SUPPORTED_TX_VERSION,
+        },
+      ])
+      const parsed = fetchedTransactionSchema.safeParse(result ?? null)
+      if (!parsed.success) {
+        throw new RpcError(`getTransaction(${signature}): the result does not match a transaction`)
+      }
+      return parsed.data
     },
   }
 }
